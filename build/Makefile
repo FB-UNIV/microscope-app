@@ -179,6 +179,30 @@ src/echelle_treatment.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.s
 .PHONY : src/echelle_treatment.cpp.s
 
+src/format_microns.o: src/format_microns.cpp.o
+.PHONY : src/format_microns.o
+
+# target to build an object file
+src/format_microns.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/format_microns.cpp.o
+.PHONY : src/format_microns.cpp.o
+
+src/format_microns.i: src/format_microns.cpp.i
+.PHONY : src/format_microns.i
+
+# target to preprocess a source file
+src/format_microns.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/format_microns.cpp.i
+.PHONY : src/format_microns.cpp.i
+
+src/format_microns.s: src/format_microns.cpp.s
+.PHONY : src/format_microns.s
+
+# target to generate assembly for a file
+src/format_microns.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/format_microns.cpp.s
+.PHONY : src/format_microns.cpp.s
+
 src/levels_treatment.o: src/levels_treatment.cpp.o
 .PHONY : src/levels_treatment.o
 
@@ -337,6 +361,9 @@ help:
 	@echo "... src/echelle_treatment.o"
 	@echo "... src/echelle_treatment.i"
 	@echo "... src/echelle_treatment.s"
+	@echo "... src/format_microns.o"
+	@echo "... src/format_microns.i"
+	@echo "... src/format_microns.s"
 	@echo "... src/levels_treatment.o"
 	@echo "... src/levels_treatment.i"
 	@echo "... src/levels_treatment.s"

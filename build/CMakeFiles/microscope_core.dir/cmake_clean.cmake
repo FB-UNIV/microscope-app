@@ -1,6 +1,8 @@
 file(REMOVE_RECURSE
   "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o"
   "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o.d"
+  "CMakeFiles/microscope_core.dir/src/format_microns.cpp.o"
+  "CMakeFiles/microscope_core.dir/src/format_microns.cpp.o.d"
   "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o"
   "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o.d"
   "CMakeFiles/microscope_core.dir/src/measurement.cpp.o"

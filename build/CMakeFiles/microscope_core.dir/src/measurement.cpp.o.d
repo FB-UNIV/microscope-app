@@ -340,4 +340,5 @@ CMakeFiles/microscope_core.dir/src/measurement.cpp.o: \
  /usr/include/c++/13/bits/unique_lock.h \
  /usr/include/opencv4/opencv2/core/optim.hpp \
  /usr/include/opencv4/opencv2/core/ovx.hpp \
- /usr/include/opencv4/opencv2/core/cvdef.h
+ /usr/include/opencv4/opencv2/core/cvdef.h \
+ /home/claude/microscope-app/include/format_microns.hpp

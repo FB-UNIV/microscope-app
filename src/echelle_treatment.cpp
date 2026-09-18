@@ -1,7 +1,7 @@
 #include "echelle_treatment.hpp"
 #include "treatment_factory.hpp"
+#include "format_microns.hpp"
 #include <cmath>
-#include <sstream>
 
 namespace msapp {
 
@@ -22,21 +22,7 @@ double EchelleTreatment::niceBarLengthMicrons(double targetPixels, double pixels
     return nice * base;
 }
 
-namespace {
-// Hershey fonts (cv::putText's only option) don't render "µ" reliably, so
-// the baked-in overlay label uses plain "um" rather than "µm". Formats the
-// nice-number microns value without trailing zeros (e.g. 50, 0.5, 200).
-std::string formatMicrons(double microns) {
-    std::ostringstream oss;
-    if (microns == std::floor(microns)) {
-        oss << static_cast<long long>(microns);
-    } else {
-        oss << microns;
-    }
-    oss << " um";
-    return oss.str();
-}
-} // namespace
+
 
 cv::Mat EchelleTreatment::apply(const cv::Mat& input) const {
     cv::Mat output = input.clone();

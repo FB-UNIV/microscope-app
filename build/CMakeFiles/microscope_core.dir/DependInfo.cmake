@@ -9,6 +9,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/claude/microscope-app/src/echelle_treatment.cpp" "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o.d"
+  "/home/claude/microscope-app/src/format_microns.cpp" "CMakeFiles/microscope_core.dir/src/format_microns.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/format_microns.cpp.o.d"
   "/home/claude/microscope-app/src/levels_treatment.cpp" "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o.d"
   "/home/claude/microscope-app/src/measurement.cpp" "CMakeFiles/microscope_core.dir/src/measurement.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/measurement.cpp.o.d"
   "/home/claude/microscope-app/src/treatment_factory.cpp" "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o.d"

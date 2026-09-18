@@ -9,6 +9,7 @@ find_package(nlohmann_json REQUIRED)
 
 add_library(microscope_core
     src/treatment_factory.cpp
+    src/format_microns.cpp
     src/levels_treatment.cpp
     src/echelle_treatment.cpp
     src/vue.cpp

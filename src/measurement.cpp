@@ -1,6 +1,5 @@
 #include "measurement.hpp"
-#include <cmath>
-#include <sstream>
+#include "format_microns.hpp"
 #include <stdexcept>
 
 namespace msapp {
@@ -22,15 +21,7 @@ double Measurement::realDistanceMicrons() const {
 }
 
 std::string Measurement::label() const {
-    const double microns = realDistanceMicrons();
-    std::ostringstream oss;
-    if (microns == std::floor(microns)) {
-        oss << static_cast<long long>(microns);
-    } else {
-        oss << microns;
-    }
-    oss << " um";
-    return oss.str();
+    return formatMicrons(realDistanceMicrons());
 }
 
 } // namespace msapp
