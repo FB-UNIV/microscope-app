@@ -12,6 +12,7 @@ add_library(microscope_core
     src/levels_treatment.cpp
     src/echelle_treatment.cpp
     src/vue.cpp
+    src/measurement.cpp
 )
 target_include_directories(microscope_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(microscope_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohmann_json)

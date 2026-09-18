@@ -203,6 +203,30 @@ src/levels_treatment.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.s
 .PHONY : src/levels_treatment.cpp.s
 
+src/measurement.o: src/measurement.cpp.o
+.PHONY : src/measurement.o
+
+# target to build an object file
+src/measurement.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/measurement.cpp.o
+.PHONY : src/measurement.cpp.o
+
+src/measurement.i: src/measurement.cpp.i
+.PHONY : src/measurement.i
+
+# target to preprocess a source file
+src/measurement.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/measurement.cpp.i
+.PHONY : src/measurement.cpp.i
+
+src/measurement.s: src/measurement.cpp.s
+.PHONY : src/measurement.s
+
+# target to generate assembly for a file
+src/measurement.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/src/measurement.cpp.s
+.PHONY : src/measurement.cpp.s
+
 src/treatment_factory.o: src/treatment_factory.cpp.o
 .PHONY : src/treatment_factory.o
 
@@ -316,6 +340,9 @@ help:
 	@echo "... src/levels_treatment.o"
 	@echo "... src/levels_treatment.i"
 	@echo "... src/levels_treatment.s"
+	@echo "... src/measurement.o"
+	@echo "... src/measurement.i"
+	@echo "... src/measurement.s"
 	@echo "... src/treatment_factory.o"
 	@echo "... src/treatment_factory.i"
 	@echo "... src/treatment_factory.s"

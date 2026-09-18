@@ -125,12 +125,27 @@ CMakeFiles/microscope_core.dir/src/vue.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/microscope_core.dir/src/vue.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/claude/microscope-app/src/vue.cpp -o CMakeFiles/microscope_core.dir/src/vue.cpp.s
 
+CMakeFiles/microscope_core.dir/src/measurement.cpp.o: CMakeFiles/microscope_core.dir/flags.make
+CMakeFiles/microscope_core.dir/src/measurement.cpp.o: /home/claude/microscope-app/src/measurement.cpp
+CMakeFiles/microscope_core.dir/src/measurement.cpp.o: CMakeFiles/microscope_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/microscope_core.dir/src/measurement.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/microscope_core.dir/src/measurement.cpp.o -MF CMakeFiles/microscope_core.dir/src/measurement.cpp.o.d -o CMakeFiles/microscope_core.dir/src/measurement.cpp.o -c /home/claude/microscope-app/src/measurement.cpp
+
+CMakeFiles/microscope_core.dir/src/measurement.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/microscope_core.dir/src/measurement.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/claude/microscope-app/src/measurement.cpp > CMakeFiles/microscope_core.dir/src/measurement.cpp.i
+
+CMakeFiles/microscope_core.dir/src/measurement.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/microscope_core.dir/src/measurement.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/claude/microscope-app/src/measurement.cpp -o CMakeFiles/microscope_core.dir/src/measurement.cpp.s
+
 # Object files for target microscope_core
 microscope_core_OBJECTS = \
 "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o" \
 "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o" \
 "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o" \
-"CMakeFiles/microscope_core.dir/src/vue.cpp.o"
+"CMakeFiles/microscope_core.dir/src/vue.cpp.o" \
+"CMakeFiles/microscope_core.dir/src/measurement.cpp.o"
 
 # External object files for target microscope_core
 microscope_core_EXTERNAL_OBJECTS =
@@ -139,9 +154,10 @@ libmicroscope_core.a: CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o
 libmicroscope_core.a: CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o
 libmicroscope_core.a: CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o
 libmicroscope_core.a: CMakeFiles/microscope_core.dir/src/vue.cpp.o
+libmicroscope_core.a: CMakeFiles/microscope_core.dir/src/measurement.cpp.o
 libmicroscope_core.a: CMakeFiles/microscope_core.dir/build.make
 libmicroscope_core.a: CMakeFiles/microscope_core.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking CXX static library libmicroscope_core.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX static library libmicroscope_core.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/microscope_core.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/microscope_core.dir/link.txt --verbose=$(VERBOSE)
 

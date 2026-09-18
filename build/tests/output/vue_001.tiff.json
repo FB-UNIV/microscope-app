@@ -1,0 +1,18 @@
+[
+  {
+    "params": {
+      "black_point": 90,
+      "white_point": 180
+    },
+    "type": "levels"
+  },
+  {
+    "params": {
+      "calibration": {
+        "grossissement": "x40",
+        "pixels_per_micron": 2.5
+      }
+    },
+    "type": "echelle"
+  }
+]

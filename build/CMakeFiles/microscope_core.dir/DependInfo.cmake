@@ -10,6 +10,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/claude/microscope-app/src/echelle_treatment.cpp" "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o.d"
   "/home/claude/microscope-app/src/levels_treatment.cpp" "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o.d"
+  "/home/claude/microscope-app/src/measurement.cpp" "CMakeFiles/microscope_core.dir/src/measurement.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/measurement.cpp.o.d"
   "/home/claude/microscope-app/src/treatment_factory.cpp" "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o.d"
   "/home/claude/microscope-app/src/vue.cpp" "CMakeFiles/microscope_core.dir/src/vue.cpp.o" "gcc" "CMakeFiles/microscope_core.dir/src/vue.cpp.o.d"
   )

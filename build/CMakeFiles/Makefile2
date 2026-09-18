@@ -85,12 +85,12 @@ clean: CMakeFiles/test_measurement.dir/clean
 CMakeFiles/microscope_core.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/microscope_core.dir/build.make CMakeFiles/microscope_core.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=1,2,3,4,5 "Built target microscope_core"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=1,2,3,4,5,6 "Built target microscope_core"
 .PHONY : CMakeFiles/microscope_core.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/microscope_core.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 5
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 6
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/microscope_core.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 0
 .PHONY : CMakeFiles/microscope_core.dir/rule
@@ -111,12 +111,12 @@ CMakeFiles/microscope_core.dir/clean:
 CMakeFiles/test_pipeline.dir/all: CMakeFiles/microscope_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pipeline.dir/build.make CMakeFiles/test_pipeline.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pipeline.dir/build.make CMakeFiles/test_pipeline.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=8,9 "Built target test_pipeline"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=9,10 "Built target test_pipeline"
 .PHONY : CMakeFiles/test_pipeline.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_pipeline.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 7
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 8
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_pipeline.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 0
 .PHONY : CMakeFiles/test_pipeline.dir/rule
@@ -137,12 +137,12 @@ CMakeFiles/test_pipeline.dir/clean:
 CMakeFiles/test_measurement.dir/all: CMakeFiles/microscope_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_measurement.dir/build.make CMakeFiles/test_measurement.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_measurement.dir/build.make CMakeFiles/test_measurement.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=6,7 "Built target test_measurement"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/claude/microscope-app/build/CMakeFiles --progress-num=7,8 "Built target test_measurement"
 .PHONY : CMakeFiles/test_measurement.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/test_measurement.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 7
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 8
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_measurement.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/claude/microscope-app/build/CMakeFiles 0
 .PHONY : CMakeFiles/test_measurement.dir/rule

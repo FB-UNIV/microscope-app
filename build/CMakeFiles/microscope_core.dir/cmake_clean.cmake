@@ -3,6 +3,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o.d"
   "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o"
   "CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o.d"
+  "CMakeFiles/microscope_core.dir/src/measurement.cpp.o"
+  "CMakeFiles/microscope_core.dir/src/measurement.cpp.o.d"
   "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o"
   "CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o.d"
   "CMakeFiles/microscope_core.dir/src/vue.cpp.o"
