@@ -1,0 +1,5 @@
+# Capture writes local-first; sync to backend is async, never blocking
+
+Every Vue capture writes to local disk immediately as a new immutable, uniquely-named file — never overwriting a previous file, never blocking on network availability. A background process syncs local writes to the shared backend (DB + object storage) opportunistically, retrying on failure. This directly targets the confirmed root cause of the legacy app's failures: concurrent students racing writes to the same shared slot, a reused index silently destroying an earlier photo, and a flaky share corrupting or losing captures mid-write. This holds even with real server infrastructure (k3s) available — the failure mode is workstation-to-server network flakiness during a live class, not "no server," and good infra doesn't eliminate transient network hiccups in a lab room.
+
+**Consequences:** Conflict resolution (two machines claiming the same Échantillon/slot label) becomes a metadata question resolved after the fact, not a write-time question. The "shared archive" view can trail live capture by seconds-to-minutes on a bad connection.

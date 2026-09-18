@@ -1,0 +1,3 @@
+# Phased delivery: local-only Phase 1, backend layered on in Phase 2
+
+Phase 1 ships a fully local, single-workstation capture + Treatment app — no sync, no API, no backend — usable standalone immediately. Phase 2 adds the k3s-hosted sync/archive/admin stack (ADRs 0004–0008) on top. This isn't a compromise on the architecture already decided: ADR 0004 made local-first the foundation specifically so the backend bolts on without rework, so Phase 1 is Phase 2's actual foundation, not throwaway work. Phasing also front-loads the genuinely risky unknowns (does OpenCV see the Moticam cleanly, is the levels/Échelle math right) against real hardware before any backend work happens.
