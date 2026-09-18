@@ -19,6 +19,9 @@ target_link_libraries(microscope_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohm
 add_executable(test_pipeline tests/test_pipeline.cpp)
 target_link_libraries(test_pipeline PRIVATE microscope_core)
 
+add_executable(test_measurement tests/test_measurement.cpp)
+target_link_libraries(test_measurement PRIVATE microscope_core)
+
 # NOTE: this CMakeLists builds the core imaging logic only (Treatment
 # pipeline, Levels, Échelle, Vue persistence) — no Qt, no camera capture.
 # Those are the next slice (Qt MainWindow + OpenCV VideoCapture), deferred
