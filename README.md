@@ -1,5 +1,7 @@
 # Microscope Capture App
 
+[![CI](https://github.com/FB-UNIV/microscope-app/actions/workflows/ci.yml/badge.svg)](https://github.com/FB-UNIV/microscope-app/actions/workflows/ci.yml)
+
 Replacement for the legacy Matrox-based metallography imaging tool. See
 [`CONTEXT.md`](./CONTEXT.md) for the domain glossary (Grossissement,
 Calibration, Échelle, Vue, TP, Échantillon, Fiche, etc.) and
