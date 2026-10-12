@@ -45,33 +45,65 @@ its `--out-dir`, and `Tee-Object` keeps the console output in a text file.
 .\camera_probe.exe --api msmf  --out-dir probe-msmf  | Tee-Object probe-msmf.txt
 ```
 
-Each camera index prints something like:
+Each camera index prints something like this (numbers illustrative, not the A5's):
 
 ```
-index 0: opened via DSHOW, default 640x480 YUY2
-  exposure=-6 auto_exposure=... gain=... wb_temperature=...
-  frame 640x480 x3 channels, mean BGR (...) -> probe-dshow\camera_probe_index0.png
+index 0: opened via DSHOW
+  default: 1024x768 format=MJPG reported_fps=30
+  default controls: exposure=-7 auto_exposure=-1 gain=8 auto_wb=... wb_temperature=5000
+  measured: 20/20 frames in 0.67 s = 29.9 fps
+  frame 1024x768 x3 channels, mean BGR (...), clipped 0.2% -> probe-dshow\camera_probe_index0.png
 ```
 
 Find the A5's index (the one whose PNG shows the microscope image, not a laptop
-webcam). If its size is small (e.g. 640x480), ask for the full resolution — take
-the value from the A5 spec sheet; `2592x1944` below is only an example:
+webcam). If its size is small, ask for a larger one with `--size`; `--mjpg` asks for
+compressed frames, which USB cameras often need to reach full resolution at a usable
+frame rate.
 
-```
-.\camera_probe.exe --api dshow --size 2592x1944 --out-dir probe-full | Tee-Object probe-full.txt
-.\camera_probe.exe --api dshow --size 2592x1944 --mjpg --out-dir probe-mjpg | Tee-Object probe-mjpg.txt
-```
-
-`--mjpg` asks for compressed frames, which USB 2 cameras often need to reach full
-resolution. Other options: `--max-index N` (indexes to try, default 4).
+All options: `--api`, `--max-index N` (indexes to try, default 4), `--size WxH`,
+`--mjpg`, `--frames N` (frames timed for the fps measurement, default 20),
+`--auto-exposure V`, `--exposure V` (DirectShow: log2 seconds, -7 ≈ 7.8 ms, -8 ≈ 3.9 ms),
+`--wb KELVIN`, `--out-dir DIR`. Values are read back after setting, so the output
+shows whether the camera accepted them.
 
 Exit code: 0 if at least one camera delivered a frame, 1 if none did, 2 for a bad
 option.
 
 ## 4. Send back
 
-The `probe-*.txt` files and the PNGs of the A5. They decide the camera defaults
-(capture API, resolution, pixel format) the Qt preview will use.
+The `*.txt` files and the PNGs of the A5. They decide the camera defaults
+(capture API, resolution, pixel format, exposure) the Qt preview will use.
+
+## Moticam A5: known so far
+
+From the first lab run (probe v1, 2026-10-12, no specimen in focus):
+
+| Item | Result |
+|---|---|
+| Index / APIs | index 0 is the A5; opens with both DirectShow and Media Foundation |
+| Default mode | 1024×768 |
+| Larger mode | **3840×2160 accepted and delivered** via DirectShow, with and without `--mjpg` |
+| Controls | DirectShow: exposure -7 (≈ 7.8 ms), gain 8, white balance 5000 K readable; MSMF reports no white balance |
+| Not yet known | pixel format (v1 could not decode it), real frame rate at 4K, whether manual exposure / white balance stick |
+| Image check | frames were a featureless pink field; at 4K 15–40 % of pixels clipped (overexposed) |
+
+### Round 2 (probe v2) — with a real sample
+
+Put a polished sample under the microscope, focus it (MotiConnect live view is
+fine for focusing), **then close MotiConnect** and run:
+
+```
+.\camera_probe.exe --api dshow --size 3840x2160 --out-dir r2-4k | Tee-Object r2-4k.txt
+.\camera_probe.exe --api dshow --size 3840x2160 --mjpg --out-dir r2-4k-mjpg | Tee-Object r2-4k-mjpg.txt
+.\camera_probe.exe --api dshow --size 1920x1080 --mjpg --out-dir r2-1080 | Tee-Object r2-1080.txt
+.\camera_probe.exe --api dshow --size 3840x2160 --mjpg --exposure -9 --out-dir r2-exp9 | Tee-Object r2-exp9.txt
+.\camera_probe.exe --api dshow --size 3840x2160 --mjpg --wb 4500 --out-dir r2-wb4500 | Tee-Object r2-wb4500.txt
+```
+
+If the `--exposure -9` run's "after request" line still shows the old exposure, the
+camera stayed in auto exposure: retry adding `--auto-exposure 0`, then
+`--auto-exposure 0.25` (backends disagree on the value meaning "manual").
+Send back the five `r2-*.txt` files and the `r2-4k-mjpg` and `r2-exp9` PNGs.
 
 ## Troubleshooting
 
