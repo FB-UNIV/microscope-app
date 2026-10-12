@@ -33,8 +33,9 @@ jobs:
       - name: Build
         run: cmake --build build
 
-      # Legacy-parity checks need the legacy TIFF archive, which is not in the
-      # repo; they print [SKIP] here and run locally with MSAPP_LEGACY_DATA_DIR.
+      # Phase-analysis parity runs here on the in-repo legacy crops; the
+      # full-size checks need the legacy TIFF archive (not in the repo), so
+      # they print [SKIP] here and run locally with MSAPP_LEGACY_DATA_DIR.
       - name: Test
         run: ctest --test-dir build --output-on-failure
 

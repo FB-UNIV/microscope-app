@@ -172,6 +172,36 @@ int main(int argc, char** argv) {
         check(cv::countNonZero(diff.reshape(1)) == 0, "sidecar round-trip rebuilds an identical overlay");
     }
 
+    // Always-on parity: 256x256 centre crops of three legacy views (low, mid
+    // and high dark fraction), stored losslessly in the repo so CI checks the
+    // port without the 15 MB archive. Golden values from
+    // tools/legacy_phase_reference.py run on these exact PNGs.
+    std::cout << "\n== Legacy parity: in-repo crops vs independent numpy reference ==\n";
+    {
+        const fs::path fixtures = fs::path(MSAPP_SOURCE_DIR) / "tests" / "fixtures" / "legacy";
+        const Golden crops[] = {
+            {"CTTM1Ech1Vue1_crop256.png", 95, 9, 13.282776, 86.717224, 1.599884},
+            {"CTTM1Ech2Vue1_crop256.png", 150, 13, 64.813232, 35.186768, 5.811310},
+            {"CTTM1Ech3Vue1_crop256.png", 161, 12, 91.578674, 8.421326, 1.897430},
+        };
+        for (const Golden& g : crops) {
+            cv::Mat img = cv::imread((fixtures / g.file).string(), cv::IMREAD_UNCHANGED);
+            if (img.empty()) {
+                check(false, std::string("could not read fixture ") + g.file);
+                continue;
+            }
+            PhaseAnalysis a = analyzePhases(img);
+            const std::string got = " (got t=" + std::to_string(a.threshold.threshold) + " tol=" +
+                                    std::to_string(a.threshold.tolerance) + " dark=" +
+                                    std::to_string(a.fractions.darkPercent) + ")";
+            check(a.threshold.threshold == g.threshold && a.threshold.tolerance == g.tolerance &&
+                      nearlyEqual(a.fractions.darkPercent, g.dark, 1e-5) &&
+                      nearlyEqual(a.fractions.lightPercent, g.light, 1e-5) &&
+                      nearlyEqual(a.fractions.errorPercent, g.error, 1e-5),
+                  std::string(g.file) + " matches reference" + got);
+        }
+    }
+
     std::cout << "\n== Legacy parity: CTTM TIFFs vs independent numpy reference ==\n";
     const fs::path dataDir = legacyDataDir(argc, argv);
     if (dataDir.empty() || !fs::exists(dataDir / "CTTM1Ech1Vue1.tif")) {
