@@ -75,8 +75,10 @@ tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used b
 4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
    + Échelle — see ADR 0010).
 
-Legacy-parity checks run against real legacy view TIFFs when given their
-folder: `./test_phase_analysis <folder>` / `./test_legacy_import <folder>`,
-or `cmake -DMSAPP_LEGACY_DATA_DIR=<folder> ..` then `ctest`. Without it
-they print `[SKIP]`. `tools/legacy_phase_reference.py` is the independent
+Phase-analysis parity always runs (CI included) on three 256×256 crops of
+legacy views in `tests/fixtures/legacy/`. The full-size checks run against
+real legacy view TIFFs when given their folder:
+`./test_phase_analysis <folder>` / `./test_legacy_import <folder>`, or
+`cmake -DMSAPP_LEGACY_DATA_DIR=<folder> ..` then `ctest`. Without it those
+print `[SKIP]`. `tools/legacy_phase_reference.py` is the independent
 numpy implementation the golden numbers come from.
