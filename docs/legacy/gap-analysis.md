@@ -6,6 +6,9 @@ MotiConnect 1.0.1.9 installer (Motic's end-user software, source of the driver I
 
 ## 1. Biggest risk: Moticam capture is not UVC
 
+> **Update:** the purchased cameras are **Moticam A5, confirmed UVC** — this risk is retired for them; capture uses
+> the OpenCV backend (ADR 0013). The analysis below still holds for other, WinUSB-only Motic models.
+
 `MoticUSBCamera.inf` (MotiConnect 1.0.1.9, driver 3.0.0.1, 2015) binds every Motic USB camera to **WinUSB**
 with private interface GUID `{9E234069-2033-4498-8318-79CC4BC58E66}`:
 
@@ -32,7 +35,7 @@ set exposure, gain, white balance / resolution list), with an OpenCV backend for
 
 | Legacy feature | Evidence | New app status | Action |
 |---|---|---|---|
-| Live capture | MIL, 3 HW paths | not built | Motic SDK backend (§1) |
+| Live capture | MIL, 3 HW paths | `ICamera` + OpenCV backend | Moticam A5 is UVC → OpenCV backend (ADR 0013); confirm modes with `camera_probe` |
 | White balance / exposure | config rows (1.745, 1.0, 2.576), "Balance des Blancs" | — | expose via `ICamera`; persist per workstation |
 | Levels | "expansion a·x + b" | `LevelsTreatment` (black/white point) | equivalent: `a = 255/(w−b0)`, `b = −a·b0` |
 | Échelle overlay | per-TP flag `0x10` | `EchelleTreatment` | done; add per-TP "show échelle" setting? |
@@ -68,7 +71,7 @@ importers (`legacy_catalog`, `legacy_view`) and the `ICamera` layer (file + Open
 - `Calibration de la caméra.rtf` + `.xls` → calibration wizard spec.
 
 ## 5. Open decisions
-1. Exact Moticam model(s) and whether the Motic SDK is in hand.
+1. ~~Exact Moticam model(s) and whether the Motic SDK is in hand.~~ Resolved: Moticam A5, UVC — no SDK needed (ADR 0013).
 2. Keep phase % and Vickers HV? (neither is in CONTEXT.md today)
 3. Import legacy archives, or start fresh?
 4. Per-TP "show échelle" flag — keep?
