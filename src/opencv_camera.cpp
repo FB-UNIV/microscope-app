@@ -6,15 +6,20 @@
 
 namespace msapp {
 
-OpenCvCamera::OpenCvCamera(int deviceIndex, int apiPreference)
-    : deviceIndex_(deviceIndex), apiPreference_(apiPreference) {}
+OpenCvCamera::OpenCvCamera(int deviceIndex, int apiPreference, cv::Size requestedSize)
+    : deviceIndex_(deviceIndex), apiPreference_(apiPreference), requestedSize_(requestedSize) {}
 
 void OpenCvCamera::open() {
     if (capture_.isOpened()) return;
     if (!capture_.open(deviceIndex_, apiPreference_)) {
-        throw std::runtime_error("OpenCvCamera: no UVC camera at index " + std::to_string(deviceIndex_) +
-                                 ". Motic USB cameras use the WinUSB driver and need the Motic SDK "
-                                 "backend instead (ADR 0011).");
+        throw std::runtime_error("OpenCvCamera: no camera at index " + std::to_string(deviceIndex_) +
+                                 ". Check it is plugged in and not held by another program (e.g. "
+                                 "MotiConnect). The Moticam A5 is UVC and should appear here "
+                                 "(ADR 0013); WinUSB-only Motic models do not (ADR 0011).");
+    }
+    if (!requestedSize_.empty()) {
+        capture_.set(cv::CAP_PROP_FRAME_WIDTH, requestedSize_.width);
+        capture_.set(cv::CAP_PROP_FRAME_HEIGHT, requestedSize_.height);
     }
 }
 
@@ -44,6 +49,17 @@ bool OpenCvCamera::setExposureMs(double milliseconds) {
 bool OpenCvCamera::setGain(double gain) {
     if (!capture_.isOpened()) return false;
     return capture_.set(cv::CAP_PROP_GAIN, gain);
+}
+
+cv::Size OpenCvCamera::frameSize() const {
+    if (!capture_.isOpened()) return {};
+    return {static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_WIDTH)),
+            static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_HEIGHT))};
+}
+
+std::string OpenCvCamera::captureApiName() const {
+    if (!capture_.isOpened()) return {};
+    return capture_.getBackendName();
 }
 
 } // namespace msapp

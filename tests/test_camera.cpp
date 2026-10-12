@@ -79,9 +79,20 @@ int main() {
     {
         OpenCvCamera cam(97);
         const std::string message = throwsWith<std::runtime_error>([&] { cam.open(); });
-        check(message.find("ADR 0011") != std::string::npos,
-              "open on a missing device throws, pointing at the Motic/WinUSB ADR");
+        check(message.find("index 97") != std::string::npos && message.find("MotiConnect") != std::string::npos,
+              "open on a missing device names the index and the usual culprit (camera held by MotiConnect)");
         check(!cam.isOpen(), "camera stays closed");
+        check(cam.frameSize().empty(), "frameSize() of a closed camera is empty, not a stale guess");
+    }
+
+    std::cout << "\n== captureApiFromName: Windows UVC needs a choosable capture API ==\n";
+    {
+        check(captureApiFromName("auto") == cv::CAP_ANY, "'auto' -> CAP_ANY");
+        check(captureApiFromName("dshow") == cv::CAP_DSHOW, "'dshow' -> CAP_DSHOW (exposure/gain controls)");
+        check(captureApiFromName("msmf") == cv::CAP_MSMF, "'msmf' -> CAP_MSMF");
+        check(captureApiFromName("v4l2") == cv::CAP_V4L2, "'v4l2' -> CAP_V4L2 (Linux)");
+        check(!throwsWith<std::invalid_argument>([&] { captureApiFromName("gstreamer2"); }).empty(),
+              "unknown capture API throws invalid_argument");
     }
 
     std::cout << "\n== makeCamera: backend chosen by configuration ==\n";
@@ -95,10 +106,26 @@ int main() {
         cvConfig.backend = "opencv";
         check(makeCamera(cvConfig)->backend() == "opencv", "'opencv' -> OpenCvCamera (not opened yet)");
 
+        // The Moticam A5 is UVC (ADR 0013). The size is an example request,
+        // not the A5's spec — confirm the real one with tools/camera_probe.
+        CameraConfig uvc;
+        uvc.backend = "opencv";
+        uvc.captureApi = "dshow";
+        uvc.width = 2592;
+        uvc.height = 1944;
+        check(makeCamera(uvc)->backend() == "opencv", "UVC config (DirectShow + requested size) builds");
+
+        CameraConfig badApi;
+        badApi.backend = "opencv";
+        badApi.captureApi = "nope";
+        check(!throwsWith<std::invalid_argument>([&] { makeCamera(badApi); }).empty(),
+              "bad capture API is rejected when the camera is built, not at first grab");
+
         CameraConfig motic;
         motic.backend = "motic";
-        check(throwsWith<std::runtime_error>([&] { makeCamera(motic); }).find("Motic SDK") != std::string::npos,
-              "'motic' fails loudly until the SDK backend exists");
+        const std::string moticMessage = throwsWith<std::runtime_error>([&] { makeCamera(motic); });
+        check(moticMessage.find("\"opencv\"") != std::string::npos && moticMessage.find("ADR 0013") != std::string::npos,
+              "'motic' explains the A5 needs backend \"opencv\" (ADR 0013)");
 
         CameraConfig bogus;
         bogus.backend = "matrox";

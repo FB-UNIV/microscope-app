@@ -16,9 +16,10 @@ struct WhiteBalance {
 // Capture abstraction required by ADR 0001: everything above this interface
 // (Vue::capture, UI, treatments) is backend-agnostic. Backends today:
 //   "file"   — replays image files (no-camera mode, tests, demos)
-//   "opencv" — cv::VideoCapture, for UVC devices only
-//   "motic"  — Motic SDK, pending the SDK (ADR 0011: Motic USB cameras are
-//              WinUSB devices, invisible to cv::VideoCapture)
+//   "opencv" — cv::VideoCapture for UVC devices; the production path for
+//              the lab's Moticam A5, which is UVC (ADR 0013)
+//   "motic"  — reserved for a Motic SDK backend, only needed for WinUSB-only
+//              Motic models (ADR 0011); not built
 class ICamera {
 public:
     virtual ~ICamera() = default;
