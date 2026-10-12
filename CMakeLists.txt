@@ -14,17 +14,42 @@ add_library(microscope_core
     src/echelle_treatment.cpp
     src/vue.cpp
     src/measurement.cpp
+    src/phase_analysis.cpp
+    src/phase_overlay_treatment.cpp
+    src/vickers.cpp
+    src/file_replay_camera.cpp
+    src/opencv_camera.cpp
+    src/camera_factory.cpp
+    src/legacy_catalog.cpp
+    src/legacy_view.cpp
 )
 target_include_directories(microscope_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(microscope_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
 
-add_executable(test_pipeline tests/test_pipeline.cpp)
-target_link_libraries(test_pipeline PRIVATE microscope_core)
+# Phase analysis must reproduce the legacy float arithmetic step by step
+# (ADR 0012); fused multiply-add would change rounding, so forbid it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(microscope_core PRIVATE -ffp-contract=off)
+elseif(MSVC)
+    target_compile_options(microscope_core PRIVATE /fp:precise)
+endif()
 
-add_executable(test_measurement tests/test_measurement.cpp)
-target_link_libraries(test_measurement PRIVATE microscope_core)
+# Optional: folder holding the legacy CTTM*.tif archives. When set, the
+# legacy-parity checks run; otherwise they print [SKIP].
+set(MSAPP_LEGACY_DATA_DIR "" CACHE PATH "Folder with legacy Metal view TIFFs (optional)")
 
-# NOTE: this CMakeLists builds the core imaging logic only (Treatment
-# pipeline, Levels, Échelle, Vue persistence) — no Qt, no camera capture.
-# Those are the next slice (Qt MainWindow + OpenCV VideoCapture), deferred
-# per the phased-delivery ADR 0009 until this core proves out.
+enable_testing()
+foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera test_legacy_import)
+    add_executable(${test_name} tests/${test_name}.cpp)
+    target_link_libraries(${test_name} PRIVATE microscope_core)
+    target_compile_definitions(${test_name} PRIVATE MSAPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    if(MSAPP_LEGACY_DATA_DIR)
+        add_test(NAME ${test_name} COMMAND ${test_name} ${MSAPP_LEGACY_DATA_DIR})
+    else()
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endif()
+endforeach()
+
+# NOTE: still no Qt here. Capture sits behind ICamera (file + OpenCV
+# backends today); the Motic SDK backend lands once the SDK is in hand
+# (ADR 0011). The Qt MainWindow is the next slice (ADR 0009).
