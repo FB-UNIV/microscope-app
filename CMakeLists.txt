@@ -56,6 +56,11 @@ foreach(test_name test_pipeline test_measurement test_phase_analysis test_vicker
     endif()
 endforeach()
 
+# Hardware check for lab PCs (needs a camera, so it is built but not run
+# by CTest): lists cameras, frame size, pixel format, saves a test frame.
+add_executable(camera_probe tools/camera_probe.cpp)
+target_link_libraries(camera_probe PRIVATE microscope_core)
+
 # NOTE: still no Qt here. Capture sits behind ICamera (file + OpenCV
-# backends today); the Motic SDK backend lands once the SDK is in hand
-# (ADR 0011). The Qt MainWindow is the next slice (ADR 0009).
+# backends); the Moticam A5 is UVC, so the OpenCV backend is the
+# production path (ADR 0013). The Qt MainWindow is the next slice (ADR 0009).

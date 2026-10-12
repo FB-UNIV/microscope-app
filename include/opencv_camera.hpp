@@ -3,15 +3,19 @@
 #include "camera.hpp"
 
 #include <opencv2/videoio.hpp>
+#include <string>
 
 namespace msapp {
 
-// cv::VideoCapture backend. Only reaches UVC devices (DirectShow / Media
-// Foundation on Windows, V4L2 on Linux). Motic USB cameras bind to WinUSB
-// with a private interface and will not show up here — see ADR 0011.
+// cv::VideoCapture backend for UVC cameras — the production path for the
+// Moticam A5 (ADR 0013), via DirectShow / Media Foundation on Windows and
+// V4L2 on Linux. WinUSB-only Motic models never show up here (ADR 0011).
 class OpenCvCamera : public ICamera {
 public:
-    explicit OpenCvCamera(int deviceIndex, int apiPreference = cv::CAP_ANY);
+    // requestedSize: frame size asked for at open (UVC cameras often start at
+    // 640x480 otherwise); empty keeps the device default. The device may
+    // pick the nearest mode it supports — read frameSize() after open().
+    explicit OpenCvCamera(int deviceIndex, int apiPreference = cv::CAP_ANY, cv::Size requestedSize = {});
 
     std::string backend() const override { return "opencv"; }
     void open() override;
@@ -24,9 +28,15 @@ public:
     bool setExposureMs(double milliseconds) override;
     bool setGain(double gain) override;
 
+    // Actual negotiated frame size; empty while closed.
+    cv::Size frameSize() const;
+    // OpenCV's name for the capture API in use ("DSHOW", "MSMF", "V4L2"); empty while closed.
+    std::string captureApiName() const;
+
 private:
     int deviceIndex_;
     int apiPreference_;
+    cv::Size requestedSize_;
     cv::VideoCapture capture_;
 };
 

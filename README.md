@@ -25,13 +25,14 @@ Also built since: the `Measurement` tool; the legacy lab measurements,
 ported bit-exact from the decompiled legacy exe (ADR 0012) — Phase
 analysis (`analyzePhases`, plus the `phase_overlay` Treatment) and Dureté
 Vickers (`vickersHardness`); the `ICamera` capture abstraction with file
-replay and OpenCV backends (ADR 0011); and importers for legacy Department
-catalogs (`GMP1.txt`, …) and legacy view TIFFs with their calibration.
+replay and OpenCV backends — the OpenCV one is the production path, since
+the lab's Moticam A5 cameras are UVC (ADR 0013); `tools/camera_probe` for
+the first hardware check; and importers for legacy Department catalogs
+(`GMP1.txt`, …) and legacy view TIFFs with their calibration.
 
-**Not yet built:** Qt UI, the Motic SDK camera backend (waiting on the
-SDK — Motic USB cameras are WinUSB, not UVC, see ADR 0011), Fiche (PDF)
-generation, and everything in ADRs 0004–0008 (the k3s-hosted
-sync/API/backend) — that's Phase 2, deliberately deferred.
+**Not yet built:** Qt UI, Fiche (PDF) generation, and everything in ADRs
+0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
+deferred. No Motic SDK backend is planned: the A5 doesn't need one.
 
 ## Building
 
@@ -59,17 +60,18 @@ tests/               Test harness (no test framework dependency — plain assert
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
 docs/legacy/         Reverse-engineering report of the legacy Metal exe + legacy→new gap analysis
-tools/               legacy_phase_reference.py — independent reference for the phase-analysis port
+tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port
 tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used by the importer tests
 ```
 
 ## Next steps
 
-1. Qt `MainWindow`: live preview + capture button, wired to `ICamera` +
-   `Vue::capture` (file-replay backend until the Motic one exists).
-2. Motic SDK backend: one `ICamera` subclass once the developer SDK is in
-   hand; check first whether the purchased model shows up as a UVC
-   "Camera" in Device Manager (then the OpenCV backend already works).
+1. On a lab PC with a Moticam A5 plugged in (MotiConnect closed), run
+   `camera_probe` and `camera_probe --api dshow`, then retry with
+   `--size WIDTHxHEIGHT` / `--mjpg` until the full sensor resolution comes
+   back; record the working capture API, size and pixel format (ADR 0013).
+2. Qt `MainWindow`: live preview + capture button, wired to `ICamera` +
+   `Vue::capture`, using the camera settings found in step 1.
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
    until two readings agree within 0.25 %).
 4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
