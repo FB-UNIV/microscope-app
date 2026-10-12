@@ -1,0 +1,109 @@
+       4 8
+//Codes d'impression:
+//        -1 :UNE IMPRESSION
+//        -2 :IMPRESSION ILLIMITE
+//        -3 :IMPRESSION DEUX VUES UNE FOIS
+//        -4 :IMPRESSION TROIS VUES UNE FOIS
+//        -5-N :IMPRESSION PLUSIEURS VUES N FOIS
+//        0 :IMPRESSION_CTRL_PAR_ECH
+//....
+//******  utilisteur: GMP1 *********************/ 
+//**********    Nouveau TP     ************/
+TP 1: Aciers
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique qu'une vue est déjà enregistrée: si vous réutilisez un numéro vous effacerez la vue enregistrée.
+-1
+16
+//-----   liste Noms Echantillons:  
+A5 : C10
+A6 : C40
+A7 : C75
+A8 : C150
+A Identifier 1
+A Identifier 2
+
+
+//**********    Nouveau TP     ************/
+TP 2 : Fontes
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique qu'une vue est déjà enregistrée. Si vous réutilisez un numéro vous effacerez la vue enregistrée.
+-1
+16
+//-----   liste Noms Echantillons:  
+FGL200
+FtC
+Z178
+R155
+1366
+A Identifier 1
+à Identifier 2
+
+//**********    Nouveau TP     ************/
+TP3 : Alliages Cuivreux
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique qu'une vue est déjà enregistrée. Si vous réutilisez un numéro vos effacerez la vue enregistrée
+-1
+16
+//-----   liste Noms Echantillons:  
+CR
+DR
+Pb08
+CA
+BR
+à Identifier 1
+à Identifier 2
+
+//**********    Nouveau TP     ************/
+TP4 : Traction
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique une vue déjà enregistrée. Si vous réutilisez un numéro vos effacerez la vue enregistrée
+-1
+16
+//-----   liste Noms Echantillons:  
+Zone striction
+Hors striction
+
+
+
+
+
+
+//**********    Nouveau TP     ************/
+Divers
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique une vue déjà enregistrée. Si vous réutilisez un numéro vos effacerez la vue enregistrée
+-1
+16
+//-----   liste Noms Echantillons:  
+E1
+E2
+E3
+E4
+E5
+E6
+E7
+E8
+//**********    Nouveau TP     ************/
+
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique une vue déjà enregistrée. Si vous réutilisez un numéro vos effacerez la vue enregistrée
+-1
+16
+//-----   liste Noms Echantillons:  
+E1
+E2
+E3
+E4
+E5
+E6
+
+
+//**********    Nouveau TP     ************/
+
+Vous pouvez enregistrer 3 vues,  seule une de ces vues sera imprimée sur papier. Un index indique une vue déjà enregistrée. Si vous réutilisez un numéro vos effacerez la vue enregistrée
+-1
+16
+//-----   liste Noms Echantillons:  
+E1
+
+
+
+
+
+
+
+//**********    FIN DES DONNEES    ************/
