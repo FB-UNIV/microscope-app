@@ -1,2 +1,0 @@
-/usr/bin/ar qc libmicroscope_core.a CMakeFiles/microscope_core.dir/src/treatment_factory.cpp.o CMakeFiles/microscope_core.dir/src/format_microns.cpp.o CMakeFiles/microscope_core.dir/src/levels_treatment.cpp.o CMakeFiles/microscope_core.dir/src/echelle_treatment.cpp.o CMakeFiles/microscope_core.dir/src/vue.cpp.o CMakeFiles/microscope_core.dir/src/measurement.cpp.o
-/usr/bin/ranlib libmicroscope_core.a

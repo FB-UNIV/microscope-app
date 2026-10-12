@@ -1,5 +1,0 @@
-/home/claude/microscope-app/build/CMakeFiles/microscope_core.dir
-/home/claude/microscope-app/build/CMakeFiles/test_pipeline.dir
-/home/claude/microscope-app/build/CMakeFiles/test_measurement.dir
-/home/claude/microscope-app/build/CMakeFiles/edit_cache.dir
-/home/claude/microscope-app/build/CMakeFiles/rebuild_cache.dir
