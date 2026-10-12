@@ -19,10 +19,17 @@ camera capture yet — deliberately, so the imaging math and the storage
 model could be built and verified without needing a Windows machine, Qt,
 or a Moticam attached.
 
-**Not yet built:** Qt UI, actual camera capture (OpenCV `VideoCapture`
-first, Motic SDK as fallback — see conversation history), the
-Measurement tool, Fiche (PDF) generation, and everything in ADRs 0004–0008
-(the k3s-hosted sync/API/backend) — that's Phase 2, deliberately deferred.
+Also built since: the `Measurement` tool; the legacy lab measurements,
+ported bit-exact from the decompiled legacy exe (ADR 0012) — Phase
+analysis (`analyzePhases`, plus the `phase_overlay` Treatment) and Dureté
+Vickers (`vickersHardness`); the `ICamera` capture abstraction with file
+replay and OpenCV backends (ADR 0011); and importers for legacy Department
+catalogs (`GMP1.txt`, …) and legacy view TIFFs with their calibration.
+
+**Not yet built:** Qt UI, the Motic SDK camera backend (waiting on the
+SDK — Motic USB cameras are WinUSB, not UVC, see ADR 0011), Fiche (PDF)
+generation, and everything in ADRs 0004–0008 (the k3s-hosted
+sync/API/backend) — that's Phase 2, deliberately deferred.
 
 ## Building
 
@@ -49,14 +56,25 @@ src/                 Implementation
 tests/               Test harness (no test framework dependency — plain asserts + PASS/FAIL output)
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
+docs/legacy/         Reverse-engineering report of the legacy Metal exe + legacy→new gap analysis
+tools/               legacy_phase_reference.py — independent reference for the phase-analysis port
+tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used by the importer tests
 ```
 
 ## Next steps
 
-1. Qt `MainWindow`: live preview + capture button, wired to `Vue::capture`.
-2. Camera capture: try `cv::VideoCapture` against the real Moticam first;
-   fall back to the official Motic SDK only if that proves unreliable
-   (this was flagged as untested — first real test happens here).
-3. Measurement tool (ephemeral, cursor-based — see `CONTEXT.md`).
+1. Qt `MainWindow`: live preview + capture button, wired to `ICamera` +
+   `Vue::capture` (file-replay backend until the Motic one exists).
+2. Motic SDK backend: one `ICamera` subclass once the developer SDK is in
+   hand; check first whether the purchased model shows up as a UVC
+   "Camera" in Device Manager (then the OpenCV backend already works).
+3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
+   until two readings agree within 0.25 %).
 4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
    + Échelle — see ADR 0010).
+
+Legacy-parity checks run against real legacy view TIFFs when given their
+folder: `./test_phase_analysis <folder>` / `./test_legacy_import <folder>`,
+or `cmake -DMSAPP_LEGACY_DATA_DIR=<folder> ..` then `ctest`. Without it
+they print `[SKIP]`. `tools/legacy_phase_reference.py` is the independent
+numpy implementation the golden numbers come from.

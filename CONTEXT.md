@@ -1,6 +1,6 @@
 # Microscope Capture App
 
-Replacement for the legacy Matrox-based metallography imaging tool. Captures photos of metal samples from a Moticam and applies the levels/scale treatments teachers use to document them.
+Replacement for the legacy Matrox-based metallography imaging tool. Captures photos of metal samples from a Moticam, applies the levels/scale treatments teachers use to document them, and runs the two lab measurements the legacy app provided: Phase analysis and Dureté Vickers.
 
 ## Language
 
@@ -11,7 +11,7 @@ The physical objective in use for a given photo (e.g. 4x/10x/40x/100x). Selected
 _Avoid_: Magnification level, zoom
 
 **Calibration**:
-The pixels-per-µm ratio tied to one Grossissement. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement.
+The pixels-per-µm ratio tied to one Grossissement. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate, and legacy views import as `pixelsPerMicron = 0.28865 × Grossissement` (read from each legacy TIFF). The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
 _Avoid_: Resolution (legacy TIFF-tag term from the old app, ambiguous with image resolution)
 
 **Échelle**:
@@ -22,10 +22,22 @@ _Avoid_: Resolution
 An interactive tool: operator selects two points on a photo, app converts the pixel distance to a real-world length using the photo's Calibration. Read-only — does not itself mutate the photo.
 _Avoid_: Échelle (that's the overlay; this is the point-to-point reading)
 
+**Phase analysis**:
+Area percentage of the dark vs light phase on a Vue (legacy "Pourcentage des constituants" / CALCUL button) — e.g. pearlite vs ferrite in a steel, from which students estimate carbon content. Computed by the legacy algorithm, ported bit-exact (ADR 0012): an automatic Seuil, then pixels within ± the tolerance band count half to each phase, and that band's share is reported as the error.
+_Avoid_: Segmentation, Classification (no per-grain labelling happens), Denombrement (legacy function name)
+
+**Seuil**:
+The grey level separating the two phases in a Phase analysis, plus its tolerance band. Found automatically from the grey levels of edge pixels; shown on the Vue as a two-colour phase overlay (a Treatment).
+_Avoid_: Threshold in UI text (French UI), Binarisation
+
+**Dureté Vickers**:
+Hardness from the two diagonals of a pyramid indent, measured on a Vue with the Measurement tool: HV = 1.85409 × load / mean diagonal² (legacy coefficient, ADR 0012). The legacy app fixed the load at 0.5 kgf (HV0.5).
+_Avoid_: Hardness alone (several scales exist), Brinell/Rockwell (different tests)
+
 ### Session organisation
 
 **Department**:
-Top-level grouping a TP belongs to (e.g. GMP, Chemistry) — mirrors a class or subject area. Legacy app exposed this as a login-like "utilisateur" field; unclear yet whether real per-user auth is needed or this is just a picker.
+Top-level grouping a TP belongs to (e.g. GMP, Chemistry) — mirrors a class or subject area. Legacy app exposed this as a login-like "utilisateur" field; unclear yet whether real per-user auth is needed or this is just a picker. Recovered from the legacy binary, it was only a picker: typed codes `gmp11`/`gmp1r` → GMP1, `gmp2m` → GMP2, `chimie` → FAC_CHIMIE, `isman` → ISMANS, `mphys` → MES_PHYS, `lpcnd` → LPCND, `lpmci` → LPMCI, `cttm` → CTTM, `autre` → AUTRE (plus a hidden developer code). Each Department's TPs lived in a `<DEPARTMENT>.txt` catalog: 7 TP slots × 8 Échantillon slots, importable with `loadLegacyDepartmentCatalog`.
 _Avoid_: Utilisateur, Classe
 
 **TP** (Travaux Pratique):
