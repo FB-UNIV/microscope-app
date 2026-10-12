@@ -4,6 +4,12 @@ project(microscope_app_core CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Sources and test strings are UTF-8 (Échantillon, Échelle); MSVC would
+# otherwise read them in the local ANSI code page.
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 find_package(OpenCV REQUIRED)
 find_package(nlohmann_json REQUIRED)
 

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (GCC, distro OpenCV)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev python3
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wall -Wextra"
+
+      - name: Build
+        run: cmake --build build
+
+      # Legacy-parity checks need the legacy TIFF archive, which is not in the
+      # repo; they print [SKIP] here and run locally with MSAPP_LEGACY_DATA_DIR.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Check reference tool syntax
+        run: python3 -m py_compile tools/legacy_phase_reference.py
+
+  windows:
+    name: Windows (MSVC 2022, prebuilt OpenCV)
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenCV (official prebuilt binaries)
+        run: choco install opencv --no-progress -y
+
+      - name: Locate OpenCV
+        run: |
+          $root = "C:\tools\opencv\build"
+          $runtime = Get-ChildItem "$root\x64" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          "OpenCV_DIR=$root" >> $env:GITHUB_ENV
+          "$($runtime.FullName)\bin" >> $env:GITHUB_PATH
+
+      - name: Install nlohmann-json (vcpkg)
+        run: vcpkg install nlohmann-json:x64-windows
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
