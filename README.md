@@ -29,10 +29,10 @@ analysis (`analyzePhases`, plus the `phase_overlay` Treatment) and Dureté
 Vickers (`vickersHardness`); the `ICamera` capture abstraction with file
 replay and OpenCV backends — the OpenCV one is the production path, since
 the lab's Moticam A5 cameras are UVC (ADR 0013); `tools/camera_probe` for
-the first hardware check; and importers for legacy Department catalogs
-(`GMP1.txt`, …) and legacy view TIFFs with their calibration. Each Vue's
-sidecar keeps the Calibration it was captured or imported with, tied to the
-frame size it was measured at (ADR 0015).
+the first hardware check. Each Vue's sidecar keeps the Calibration it was
+captured with, tied to the frame size it was measured at (ADR 0015), and
+every calibrated capture gets its Échelle automatically (ADR 0017). Nothing
+is migrated from the legacy app (ADR 0018).
 
 **Not yet built:** Qt UI, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
@@ -66,7 +66,7 @@ CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
 docs/legacy/         Reverse-engineering report of the legacy Metal exe + legacy→new gap analysis
 tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port
-tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used by the importer tests
+tests/fixtures/      256×256 crops of legacy views for the phase-analysis parity test
 ```
 
 ## Next steps
@@ -88,13 +88,13 @@ tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used b
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
    until two readings agree within 0.25 %), recording the frame size it
    measured at — a Calibration only holds for that size (ADR 0015).
-4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
-   + Échelle — see ADR 0010).
+4. Fiche generation: one PDF sheet per TP with each Échantillon's name,
+   Vue principale, Grossissement and Échelle (ADR 0016).
 
 Phase-analysis parity always runs (CI included) on three 256×256 crops of
 legacy views in `tests/fixtures/legacy/`. The full-size checks run against
 real legacy view TIFFs when given their folder:
-`./test_phase_analysis <folder>` / `./test_legacy_import <folder>`, or
+`./test_phase_analysis <folder>`, or
 `cmake -DMSAPP_LEGACY_DATA_DIR=<folder> ..` then `ctest`. Without it those
 print `[SKIP]`. `tools/legacy_phase_reference.py` is the independent
 numpy implementation the golden numbers come from.

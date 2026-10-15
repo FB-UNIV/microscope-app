@@ -26,8 +26,6 @@ add_library(microscope_core
     src/file_replay_camera.cpp
     src/opencv_camera.cpp
     src/camera_factory.cpp
-    src/legacy_catalog.cpp
-    src/legacy_view.cpp
     src/white_reference.cpp
     src/capture_station.cpp
 )
@@ -47,7 +45,7 @@ endif()
 set(MSAPP_LEGACY_DATA_DIR "" CACHE PATH "Folder with legacy Metal view TIFFs (optional)")
 
 enable_testing()
-foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera test_legacy_import
+foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera
                   test_white_reference test_capture_station test_treatment_registration)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE microscope_core)

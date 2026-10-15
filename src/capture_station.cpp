@@ -1,4 +1,5 @@
 #include "capture_station.hpp"
+#include "echelle_treatment.hpp"
 #include "white_reference.hpp"
 
 #include <stdexcept>
@@ -62,7 +63,13 @@ Vue CaptureStation::capture(const std::filesystem::path& imagePath, const std::o
     info.frameHeight = frame.rows;
     info.pixelFormat = camera_->pixelFormat();
     // Vue::capture refuses a Calibration measured at another frame size.
-    return Vue::capture(frame, imagePath, info, calibration);
+    Vue vue = Vue::capture(frame, imagePath, info, calibration);
+    // Every calibrated capture gets its scale bar straight away (ADR 0017).
+    // It is a Treatment in the sidecar, never baked into the original.
+    if (calibration) {
+        vue.addTreatment(std::make_unique<EchelleTreatment>(*calibration));
+    }
+    return vue;
 }
 
 WhiteBalance CaptureStation::calibrateWhiteReference() {

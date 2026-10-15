@@ -11,11 +11,11 @@ The physical objective in use for a given photo (e.g. 4x/10x/40x/100x). Selected
 _Avoid_: Magnification level, zoom
 
 **Calibration**:
-The pixels-per-µm ratio tied to one Grossissement and to the frame size it was measured at. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement and frame size. Applying it to an image of another size is refused, never rescaled (ADR 0015): if the camera falls back to another mode, restore the mode or recalibrate. Each Vue keeps the Calibration it was captured or imported with in its sidecar; recalibrating changes only future Vues. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate, and legacy views import as `pixelsPerMicron = 0.28865 × Grossissement` (read from each legacy TIFF). The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
+The pixels-per-µm ratio tied to one Grossissement and to the frame size it was measured at. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement and frame size. Applying it to an image of another size is refused, never rescaled (ADR 0015): if the camera falls back to another mode, restore the mode or recalibrate. Each Vue keeps the Calibration it was captured with in its sidecar; recalibrating changes only future Vues. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate. The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
 _Avoid_: Resolution (legacy TIFF-tag term from the old app, ambiguous with image resolution)
 
 **Échelle**:
-The visual scale-bar overlay rendered onto a photo, built from its Calibration. A Treatment — it mutates the saved photo.
+The visual scale-bar overlay rendered onto a photo, built from its Calibration. A Treatment — it mutates the saved photo. Added automatically to every Vue captured with a Calibration; there is no per-TP setting (ADR 0017).
 _Avoid_: Resolution
 
 **Measurement**:
@@ -45,7 +45,7 @@ _Avoid_: Camera settings dialog, Driver settings
 ### Session organisation
 
 **Department**:
-Top-level grouping a TP belongs to (e.g. GMP, Chemistry) — mirrors a class or subject area. Legacy app exposed this as a login-like "utilisateur" field; unclear yet whether real per-user auth is needed or this is just a picker. Recovered from the legacy binary, it was only a picker: typed codes `gmp11`/`gmp1r` → GMP1, `gmp2m` → GMP2, `chimie` → FAC_CHIMIE, `isman` → ISMANS, `mphys` → MES_PHYS, `lpcnd` → LPCND, `lpmci` → LPMCI, `cttm` → CTTM, `autre` → AUTRE (plus a hidden developer code). Each Department's TPs lived in a `<DEPARTMENT>.txt` catalog: 7 TP slots × 8 Échantillon slots, importable with `loadLegacyDepartmentCatalog`.
+Top-level grouping a TP belongs to (e.g. GMP, Chemistry) — mirrors a class or subject area. Legacy app exposed this as a login-like "utilisateur" field; unclear yet whether real per-user auth is needed or this is just a picker. Recovered from the legacy binary, it was only a picker: typed codes `gmp11`/`gmp1r` → GMP1, `gmp2m` → GMP2, `chimie` → FAC_CHIMIE, `isman` → ISMANS, `mphys` → MES_PHYS, `lpcnd` → LPCND, `lpmci` → LPMCI, `cttm` → CTTM, `autre` → AUTRE (plus a hidden developer code). Each Department's TPs lived in a `<DEPARTMENT>.txt` catalog: 7 TP slots × 8 Échantillon slots. Not migrated: Departments, TPs and Échantillons are entered fresh in the new app (ADR 0018).
 _Avoid_: Utilisateur, Classe
 
 **TP** (Travaux Pratique):
@@ -65,9 +65,9 @@ A fallback bucket for Vues captured before a workstation has ever synced real De
 _Avoid_: none — this is intentionally the escape hatch, not a normal state
 
 **Fiche**:
-A generated one-page document combining an Échantillon's name, its Vue principale, Grossissement, and the Échelle scale bar, produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
+A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar, laid out on as few A4 pages as fit (ADR 0016). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
 _Avoid_: Report (less specific), Print (that's the action, not the artifact)
 
 **Vue principale**:
-The single Vue per Échantillon flagged to appear on that Échantillon's Fiche. Replaces the legacy "one of 3 views gets printed" behavior — the 3-Vue cap is dropped, this flag concept survives it.
+The single Vue per Échantillon flagged to appear on its TP's Fiche. Replaces the legacy "one of 3 views gets printed" behavior — the 3-Vue cap is dropped, this flag concept survives it.
 _Avoid_: Primary Vue (English mix)

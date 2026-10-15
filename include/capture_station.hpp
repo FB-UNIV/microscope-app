@@ -52,7 +52,8 @@ public:
     // Grabs a frame, bakes the White reference in, and saves it as a new
     // immutable Vue whose sidecar records how it was captured — the settings
     // the camera accepted at open(), not merely the ones the profile asked
-    // for — and the Calibration of the Grossissement in use, if given.
+    // for — and the Calibration of the Grossissement in use, if given. A
+    // calibrated capture also gets an Échelle built from it (ADR 0017).
     // Throws std::runtime_error, writing nothing, when that Calibration was
     // measured at another frame size than the grabbed frame (ADR 0015).
     Vue capture(const std::filesystem::path& imagePath, const std::optional<Calibration>& calibration = std::nullopt);

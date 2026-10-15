@@ -243,6 +243,12 @@ int main() {
               "the Calibration survives a reload, frame size included");
         Measurement m({0.0, 0.0}, {25.0, 0.0}, reloaded);
         check(nearlyEqual(m.realDistanceMicrons(), 10.0), "a Measurement on the reloaded Vue uses its Calibration");
+        check(reloaded.treatmentCount() == 1, "a calibrated capture gets its Échelle straight away (ADR 0017)");
+        std::ifstream sidecarIn(reloaded.sidecarPath());
+        const nlohmann::json sidecar = nlohmann::json::parse(sidecarIn);
+        check(sidecar.at("treatments").at(0).at("type") == "echelle" &&
+                  sidecar.at("treatments").at(0).at("params").at("calibration") == sidecar.at("calibration"),
+              "that Échelle is built from the Vue's own Calibration");
 
         // Calibrated at the profile's mode, but the camera fell back to another one.
         const fs::path mismatchPath = dir / "vue_mismatch.png";
@@ -259,6 +265,7 @@ int main() {
 
         const fs::path uncalibratedPath = dir / "vue_uncalibrated.png";
         Vue uncalibrated = station.capture(uncalibratedPath);
+        check(uncalibrated.treatmentCount() == 0, "an uncalibrated capture gets no Échelle");
         bool threw = false;
         try {
             Measurement({0.0, 0.0}, {25.0, 0.0}, uncalibrated);
