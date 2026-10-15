@@ -55,6 +55,15 @@ Windows folder names (`TP 1: Aciers` → `TP 1_ Aciers`). `listVues()` lists
 an Échantillon's Vues in capture order. The root is the workstation
 config's `vue_root`, by default `vues` beside the config file.
 
+The `Catalog` of Departments → TPs (with the instructions students see) →
+Échantillons is `catalog.json`, beside the workstation config. In Phase 1 a
+teacher writes it by hand (UTF-8): copy
+[`docs/catalog-example.json`](docs/catalog-example.json); an Échantillon may be
+a bare string. Names that would share a folder (`Ac1: XC10` and `Ac1/ XC10`,
+or `GMP` and `gmp`) are refused with both names. No file means no
+catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
+becomes the cache of what the API serves (ADR 0007).
+
 **Not yet built:** the Qt UI itself, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
 deferred. No Motic SDK backend is planned: the A5 doesn't need one.
