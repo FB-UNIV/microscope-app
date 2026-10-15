@@ -3,8 +3,11 @@
 #include "safe_write.hpp"
 #include "treatment_factory.hpp"
 #include <opencv2/imgcodecs.hpp>
+#include <cctype>
 #include <fstream>
 #include <stdexcept>
+#include <system_error>
+#include <vector>
 
 namespace msapp {
 
@@ -145,6 +148,38 @@ cv::Mat Vue::render() const {
         result = t->apply(result);
     }
     return result;
+}
+
+void Vue::exportRendered(const std::filesystem::path& target) const {
+    std::string extension = target.extension().string();
+    for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::vector<int> params;
+    if (extension == ".jpg" || extension == ".jpeg") {
+        params = {cv::IMWRITE_JPEG_QUALITY, 95};
+    } else if (extension != ".png" && extension != ".tif" && extension != ".tiff") {
+        throw std::invalid_argument("Vue::exportRendered: " + target.string() +
+                                    ": export as .png, .tif, .tiff, .jpg or .jpeg");
+    }
+    // The stored photo and its sidecar are never overwritten (ADR 0003).
+    std::error_code error;
+    for (const auto& own : {imagePath_, sidecarPath()}) {
+        if (std::filesystem::exists(target, error) && std::filesystem::exists(own, error) &&
+            std::filesystem::equivalent(target, own, error)) {
+            throw std::invalid_argument("Vue::exportRendered: " + target.string() +
+                                        " is this Vue's own file; export to another name");
+        }
+    }
+
+    // <stem>.tmp<ext>: OpenCV picks the format from the extension.
+    auto temp = target;
+    temp.replace_extension();
+    temp += ".tmp";
+    temp += target.extension();
+    if (!cv::imwrite(temp.string(), render(), params)) {
+        std::filesystem::remove(temp, error);
+        throw std::runtime_error("Vue::exportRendered: failed to write " + target.string());
+    }
+    std::filesystem::rename(temp, target);
 }
 
 std::filesystem::path Vue::sidecarPath() const {
