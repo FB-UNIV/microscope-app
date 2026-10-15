@@ -16,13 +16,13 @@ std::optional<double> optionalFromJson(const nlohmann::json& j, const char* key)
     return j.at(key).get<double>();
 }
 
-// First free name among <sidecar>.unreadable, <sidecar>.unreadable.2, ...
-std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar) {
+// First free name among <sidecar><suffix>, <sidecar><suffix>.2, ...
+std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar, const std::string& suffix) {
     auto candidate = sidecar;
-    candidate += ".unreadable";
+    candidate += suffix;
     for (int n = 2; std::filesystem::exists(candidate); ++n) {
         candidate = sidecar;
-        candidate += ".unreadable." + std::to_string(n);
+        candidate += suffix + "." + std::to_string(n);
     }
     return candidate;
 }
@@ -94,6 +94,10 @@ Vue Vue::load(const std::filesystem::path& imagePath) {
 }
 
 void Vue::addTreatment(std::unique_ptr<Treatment> t) {
+    // Refused before it is saved: render() could never apply it (ADR 0015).
+    if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+        throw std::runtime_error("Vue::addTreatment: " + *why);
+    }
     treatments_.push_back(std::move(t));
     saveSidecar();
 }
@@ -126,14 +130,14 @@ void Vue::saveSidecar() {
     }
 
     const auto path = sidecarPath();
-    // Never overwrite a sidecar load() could not read: it may still be the
-    // only record of this Vue's treatments and capture settings (ADR 0004 —
-    // no write destroys an earlier file).
-    if (unreadableSidecarOnDisk_) {
+    // Never overwrite a sidecar load() could not read, or dropped part of: it
+    // may still be the only record of this Vue's treatments, capture settings
+    // or Calibration (ADR 0004 — no write destroys an earlier file).
+    if (!setAsideSuffix_.empty()) {
         if (std::filesystem::exists(path)) {
-            std::filesystem::rename(path, unusedAsidePath(path));
+            std::filesystem::rename(path, unusedAsidePath(path, setAsideSuffix_));
         }
-        unreadableSidecarOnDisk_ = false;
+        setAsideSuffix_.clear();
     }
 
     // Write a temp file, then rename it over the sidecar: a crash or full
@@ -186,15 +190,38 @@ void Vue::loadSidecarIfPresent() {
         // Losing the sidecar never loses the photo (ADR 0003): load it bare
         // and report why. The file is left as is; saveSidecar() sets it aside.
         sidecarError_ = path.string() + ": " + e.what();
-        unreadableSidecarOnDisk_ = true;
+        setAsideSuffix_ = ".unreadable";
         return;
     }
-    // A Calibration that doesn't fit the image no longer describes this
-    // photo: refused, not read as an unreadable sidecar (ADR 0015).
+
+    // A Calibration or an Échelle measured at another frame size no longer
+    // describes this photo, but it costs only itself (ADR 0003 over ADR
+    // 0015): it is dropped and reported, the rest loads, and the file that
+    // still holds it is set aside on the next save. Dropping an Échelle
+    // removes only its bar, so the other treatments render as saved.
+    std::string dropped;
+    auto drop = [&](const std::string& what, const std::string& why) {
+        dropped += (dropped.empty() ? "" : "; ") + what + " dropped: " + why;
+    };
     if (calibration) {
-        calibration->requireFitsFrame(original_.cols, original_.rows, "Vue::load " + path.string());
+        if (auto why = calibration->frameMismatch(original_.cols, original_.rows)) {
+            drop("calibration", *why);
+            calibration.reset();
+        }
     }
-    treatments_ = std::move(treatments);
+    std::vector<std::unique_ptr<Treatment>> usable;
+    for (auto& t : treatments) {
+        if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+            drop(t->type() + " treatment", *why);
+        } else {
+            usable.push_back(std::move(t));
+        }
+    }
+    if (!dropped.empty()) {
+        sidecarError_ = path.string() + ": " + dropped;
+        setAsideSuffix_ = ".mismatched";
+    }
+    treatments_ = std::move(usable);
     captureInfo_ = std::move(captureInfo);
     calibration_ = std::move(calibration);
 }

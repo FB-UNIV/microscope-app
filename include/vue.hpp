@@ -60,16 +60,20 @@ public:
     // A sidecar that exists but cannot be read (corrupt JSON, unknown
     // treatment type, bad params) does not stop the photo loading (ADR 0003):
     // the Vue comes back with no treatments and no capture info, and
-    // sidecarError() says why. Throws std::runtime_error when the image is
-    // unreadable, or when the sidecar's Calibration doesn't match the
-    // image's size: it no longer describes this photo (ADR 0015).
+    // sidecarError() says why. A sidecar Calibration, or an Échelle, measured
+    // at another frame size than the image costs only itself (ADR 0015): it
+    // is dropped and named in sidecarError(), while the photo, the other
+    // treatments and the capture info load. Only an unreadable image throws.
     static Vue load(const std::filesystem::path& imagePath);
 
     // Appends a treatment to the pipeline and persists the updated sidecar
     // immediately (no separate "save" step — matches the sidecar being the
     // single source of truth for what's applied). The sidecar is replaced
-    // atomically; if load() found it unreadable, it is first kept aside as
-    // sidecarPath() + ".unreadable" rather than overwritten (ADR 0004).
+    // atomically; if load() could not read it, or dropped part of it, it is
+    // first kept aside as sidecarPath() + ".unreadable" or ".mismatched"
+    // rather than overwritten (ADR 0004). Throws std::runtime_error, saving
+    // nothing, for a treatment that can't apply to this image's frame size
+    // (an Échelle measured at another one, ADR 0015).
     void addTreatment(std::unique_ptr<Treatment> t);
 
     // Renders the untouched original with every treatment applied in
@@ -85,11 +89,14 @@ public:
     const std::optional<CaptureInfo>& captureInfo() const { return captureInfo_; }
     // The Calibration this Vue was captured or imported with, checked against
     // its frame size — what Measurement, Échelle and Vickers on this Vue use.
-    // Empty when none was given and for sidecars written before ADR 0015.
+    // Empty when none was given, for sidecars written before ADR 0015, and
+    // when load() dropped one measured at another frame size.
     const std::optional<Calibration>& calibration() const { return calibration_; }
-    // Why load() could not read this Vue's sidecar; empty when it read fine
-    // or there was none. For the UI to tell the user the treatment history
-    // was lost (the photo itself is intact).
+    // What load() could not use from this Vue's sidecar: the whole file when
+    // it was unreadable, or a Calibration or Échelle measured at another
+    // frame size (both sizes named). Empty when it read fine or there was
+    // none. For the UI to tell the user what was lost (the photo itself is
+    // intact, and the file is kept aside on the next save).
     const std::optional<std::string>& sidecarError() const { return sidecarError_; }
 
     std::filesystem::path sidecarPath() const;
@@ -101,8 +108,10 @@ private:
     std::optional<CaptureInfo> captureInfo_;
     std::optional<Calibration> calibration_;
     std::optional<std::string> sidecarError_;
-    // True while the file at sidecarPath() is the one load() could not read.
-    bool unreadableSidecarOnDisk_ = false;
+    // Non-empty while the file at sidecarPath() holds something load() did
+    // not keep: ".unreadable" or ".mismatched", the suffix saveSidecar()
+    // moves it aside to before writing.
+    std::string setAsideSuffix_;
 
     void saveSidecar();
     void loadSidecarIfPresent();

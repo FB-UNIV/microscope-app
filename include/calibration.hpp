@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -29,15 +30,21 @@ struct Calibration {
         return !hasFrameSize() || (width == frameWidth && height == frameHeight);
     }
 
-    // Throws std::runtime_error naming both sizes when !fitsFrame. `context`
-    // says where it was about to be applied, e.g. "Vue::capture".
-    void requireFitsFrame(int width, int height, const std::string& context) const {
-        if (fitsFrame(width, height)) return;
+    // Why this Calibration doesn't hold for a width x height image, naming
+    // both sizes; empty when it fits.
+    std::optional<std::string> frameMismatch(int width, int height) const {
+        if (fitsFrame(width, height)) return std::nullopt;
         const std::string measured = std::to_string(frameWidth) + "x" + std::to_string(frameHeight);
         const std::string actual = std::to_string(width) + "x" + std::to_string(height);
-        throw std::runtime_error(context + ": Calibration " + grossissement + " was measured at " + measured +
-                                 " but the image is " + actual + ". Recalibrate " + grossissement + " at " +
-                                 actual + " or restore the camera mode it was measured in (ADR 0015).");
+        return "Calibration " + grossissement + " was measured at " + measured + " but the image is " + actual +
+               ". Recalibrate " + grossissement + " at " + actual +
+               " or restore the camera mode it was measured in (ADR 0015).";
+    }
+
+    // Throws std::runtime_error with frameMismatch()'s reason when !fitsFrame.
+    // `context` says where it was about to be applied, e.g. "Vue::capture".
+    void requireFitsFrame(int width, int height, const std::string& context) const {
+        if (auto why = frameMismatch(width, height)) throw std::runtime_error(context + ": " + *why);
     }
 
     nlohmann::json toJson() const {

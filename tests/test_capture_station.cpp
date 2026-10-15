@@ -6,6 +6,8 @@
 //   in, and the photo's sidecar records exactly how it was taken (ADR 0014).
 
 #include "capture_station.hpp"
+#include "echelle_treatment.hpp"
+#include "levels_treatment.hpp"
 #include "measurement.hpp"
 #include "vue.hpp"
 
@@ -14,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -36,6 +39,13 @@ void check(bool condition, const std::string& description) {
 
 bool nearlyEqual(double a, double b, double eps = 1e-9) {
     return std::abs(a - b) < eps;
+}
+
+std::string readFile(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream content;
+    content << in.rdbuf();
+    return content.str();
 }
 
 // Records which controls the station applied; frames are a fixed tinted
@@ -275,21 +285,54 @@ int main() {
               "ADR 0014 sidecar: capture info loads, frame size unknown");
         check(!old.calibration().has_value(), "ADR 0014 sidecar: an uncalibrated Vue, not an error");
     }
+
+    std::cout << "\n== Load: a Calibration or Échelle measured at another frame size costs only itself ==\n";
     {
-        // A sidecar whose Calibration doesn't match its image no longer describes it.
-        const fs::path imagePath = dir / "tampered_vue.png";
+        // A 4x4 photo whose sidecar Calibration and Échelle say 3840x2160:
+        // they no longer describe it, but the photo, its other treatments and
+        // its capture info do (ADR 0003 over ADR 0015).
+        const fs::path imagePath = dir / "mismatched_vue.png";
         cv::imwrite(imagePath.string(), cv::Mat(4, 4, CV_8UC3, kTint));
-        std::ofstream(imagePath.string() + ".json")
-            << nlohmann::json{{"calibration", Calibration{"x40", 2.5, 3840, 2160}.toJson()},
-                              {"treatments", nlohmann::json::array()}}
-                   .dump();
+        const nlohmann::json at4k = Calibration{"x40", 2.5, 3840, 2160}.toJson();
+        const nlohmann::json treatments =
+            nlohmann::json::array({{{"type", "levels"}, {"params", {{"black_point", 90}, {"white_point", 180}}}},
+                                   {{"type", "echelle"}, {"params", {{"calibration", at4k}}}}});
+        const nlohmann::json capture = {{"camera_backend", "opencv"}, {"exposure_ms", 20.0}};
+        const fs::path sidecar = imagePath.string() + ".json";
+        const std::string onDisk =
+            nlohmann::json{{"capture", capture}, {"calibration", at4k}, {"treatments", treatments}}.dump();
+        std::ofstream(sidecar) << onDisk;
+
+        Vue vue = Vue::load(imagePath);
+        check(vue.original().size() == cv::Size(4, 4), "the photo loads, no exception");
+        check(!vue.calibration().has_value(), "the mismatched Calibration is dropped");
+        check(vue.captureInfo() && vue.captureInfo()->exposureMs && nearlyEqual(*vue.captureInfo()->exposureMs, 20.0),
+              "the capture info is kept");
+        check(vue.treatmentCount() == 1, "the Levels treatment is kept; only the mismatched Échelle is dropped");
+        check(!vue.render().empty(), "the Vue renders instead of throwing on the Échelle");
+        const std::string error = vue.sidecarError().value_or("");
+        check(error.find("calibration dropped") != std::string::npos &&
+                  error.find("echelle treatment dropped") != std::string::npos &&
+                  error.find("3840x2160") != std::string::npos && error.find("4x4") != std::string::npos,
+              "sidecarError() names what was dropped and both sizes (got '" + error + "')");
+        check(readFile(sidecar) == onDisk, "loading writes nothing: the sidecar is untouched");
+
         bool threw = false;
         try {
-            Vue::load(imagePath);
+            vue.addTreatment(std::make_unique<EchelleTreatment>(Calibration{"x40", 2.5, 3840, 2160}));
         } catch (const std::runtime_error&) {
             threw = true;
         }
-        check(threw, "a sidecar Calibration measured at another frame size is refused at load");
+        check(threw && vue.treatmentCount() == 1, "adding an Échelle measured at another frame size is refused");
+        check(readFile(sidecar) == onDisk, "a refused treatment saves nothing");
+
+        vue.addTreatment(std::make_unique<LevelsTreatment>(10, 240));
+        check(readFile(sidecar.string() + ".mismatched") == onDisk,
+              "the next save keeps the old sidecar aside as .mismatched instead of erasing the dropped Calibration");
+        Vue reloaded = Vue::load(imagePath);
+        check(!reloaded.sidecarError() && reloaded.treatmentCount() == 2 && !reloaded.calibration() &&
+                  reloaded.captureInfo(),
+              "the new sidecar reloads cleanly");
     }
 
     std::cout << "\n== Sidecars written before ADR 0014 still load ==\n";
