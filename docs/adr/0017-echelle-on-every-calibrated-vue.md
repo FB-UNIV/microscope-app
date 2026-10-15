@@ -1,0 +1,5 @@
+# Every calibrated Vue gets an Échelle automatically; no per-TP setting
+
+The legacy catalogs stored a per-TP flag (bit `0x10`) inferred to mean "show Échelle", and it was set on every TP in the catalogs we had, so in practice the scale bar was always on. Decided: when a Vue is captured with a Calibration, `CaptureStation::capture()` adds an Échelle Treatment built from that same Calibration straight away. There is no per-TP or per-workstation switch. Considered keeping the per-TP flag with a default of on: a setting nobody turned off, for a Treatment that never touches the stored original anyway (ADR 0002/0003).
+
+**Consequences:** An uncalibrated capture gets no Échelle, since there is nothing to size it from. The Échelle and the Vue share one Calibration, so ADR 0015's frame-size check covers both. The bar lives in the sidecar as a Treatment, not baked into the photo; letting an operator remove it from one Vue is a UI concern for later. The legacy flag is not carried over (nothing is migrated, ADR 0018).

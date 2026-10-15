@@ -66,12 +66,15 @@ importers (`legacy_catalog`, `legacy_view`) and the `ICamera` layer (file + Open
 6. HV0.5: `d_µm = ((d1+d2)/2) / pixelsPerMicron`; `HV = 0.927045·10⁶ / d_µm²`.
 
 ## 4. Migration assets already in hand
+
+> **Update:** not used. Nothing is migrated from the legacy app and the importers were removed (ADR 0018).
+
 - `GMP1*.txt`, `GMP2.txt`, `CTTM.txt`, `LPCND.txt`, `LPMCI.txt`, `MES_PHYS.txt` → initial Department/TP/Échantillon seed.
 - 8 `CTTM1Ech*Vue*.tif` (x20 and x50) → test fixtures for importer + algorithm golden tests.
 - `Calibration de la caméra.rtf` + `.xls` → calibration wizard spec.
 
 ## 5. Open decisions
 1. ~~Exact Moticam model(s) and whether the Motic SDK is in hand.~~ Resolved: Moticam A5, UVC — no SDK needed (ADR 0013).
-2. Keep phase % and Vickers HV? (neither is in CONTEXT.md today)
-3. Import legacy archives, or start fresh?
-4. Per-TP "show échelle" flag — keep?
+2. ~~Keep phase % and Vickers HV?~~ Resolved: both ported bit-exact (ADR 0012).
+3. ~~Import legacy archives, or start fresh?~~ Resolved: start fresh; the legacy importers are removed (ADR 0018).
+4. ~~Per-TP "show échelle" flag — keep?~~ Resolved: no flag; every calibrated Vue gets an Échelle (ADR 0017).
