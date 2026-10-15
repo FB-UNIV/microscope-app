@@ -18,8 +18,8 @@ class Vue;
 class Measurement {
 public:
     Measurement(cv::Point2d p1, cv::Point2d p2, Calibration calibration);
-    // Points on `vue`, measured with the Calibration it was captured or
-    // imported with — already checked against its frame size (ADR 0015).
+    // Points on `vue`, measured with the Calibration it was captured with —
+    // already checked against its frame size (ADR 0015).
     // Throws std::invalid_argument when the Vue has no Calibration.
     Measurement(cv::Point2d p1, cv::Point2d p2, const Vue& vue);
 

@@ -87,8 +87,8 @@ public:
     // Empty for Vues captured without a CaptureStation (tests, imports) and
     // for sidecars written before ADR 0014.
     const std::optional<CaptureInfo>& captureInfo() const { return captureInfo_; }
-    // The Calibration this Vue was captured or imported with, checked against
-    // its frame size — what Measurement, Échelle and Vickers on this Vue use.
+    // The Calibration this Vue was captured with, checked against its frame
+    // size — what Measurement, Échelle and Vickers on this Vue use.
     // Empty when none was given, for sidecars written before ADR 0015, and
     // when load() dropped one measured at another frame size.
     const std::optional<Calibration>& calibration() const { return calibration_; }
