@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -172,6 +173,42 @@ int main(int argc, char** argv) {
             threw = true;
         }
         check(threw, "non-TIFF input throws");
+    }
+
+    std::cout << "\n== Legacy view import: a failed import leaves nothing behind ==\n";
+    {
+        const fs::path outDir = fs::temp_directory_path() / "msapp_legacy_import_retry_test";
+        fs::remove_all(outDir);
+        fs::create_directories(outDir);
+        const cv::Mat pixels(8, 8, CV_8UC3, cv::Scalar(40, 90, 160));
+
+        // OpenCV decodes by content, so this PNG named .tif reads as an
+        // image, but its metadata is not a TIFF and the parser throws.
+        std::vector<uchar> png;
+        cv::imencode(".png", pixels, png);
+        const fs::path notTiff = outDir / "TP1Ech1Vue1.tif";
+        std::ofstream(notTiff, std::ios::binary)
+            .write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
+
+        const fs::path target = outDir / "imported.tiff";
+        bool threw = false;
+        try {
+            importLegacyView(notTiff, target);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        check(threw, "unreadable legacy metadata throws");
+        check(!fs::exists(target), "no Vue is left at the target path");
+
+        const fs::path plainTiff = outDir / "TP1Ech1Vue2.tif";
+        cv::imwrite(plainTiff.string(), pixels);
+        try {
+            LegacyViewImport retried = importLegacyView(plainTiff, target);
+            check(fs::exists(target) && !retried.metadata, "a retry onto the same target path succeeds");
+        } catch (const std::exception& e) {
+            check(false, std::string("a retry onto the same target path succeeds (threw: ") + e.what() + ")");
+        }
+        fs::remove_all(outDir);
     }
 
     std::cout << "\n== Legacy archive import: real CTTM views ==\n";
