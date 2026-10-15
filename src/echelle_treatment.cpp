@@ -1,5 +1,4 @@
 #include "echelle_treatment.hpp"
-#include "treatment_factory.hpp"
 #include "format_microns.hpp"
 #include <cmath>
 
@@ -62,12 +61,5 @@ nlohmann::json EchelleTreatment::paramsToJson() const {
 std::unique_ptr<Treatment> EchelleTreatment::fromJson(const nlohmann::json& params) {
     return std::make_unique<EchelleTreatment>(Calibration::fromJson(params.at("calibration")));
 }
-
-namespace {
-const bool kRegistered = [] {
-    TreatmentFactory::instance().registerType("echelle", &EchelleTreatment::fromJson);
-    return true;
-}();
-} // namespace
 
 } // namespace msapp

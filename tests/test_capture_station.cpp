@@ -6,7 +6,6 @@
 //   in, and the photo's sidecar records exactly how it was taken (ADR 0014).
 
 #include "capture_station.hpp"
-#include "levels_treatment.hpp"
 #include "vue.hpp"
 
 #include <opencv2/imgcodecs.hpp>
@@ -165,9 +164,9 @@ int main() {
     {
         const fs::path imagePath = dir / "old_vue.png";
         cv::imwrite(imagePath.string(), cv::Mat(4, 4, CV_8UC1, cv::Scalar(100)));
-        LevelsTreatment levels(90, 180);  // also links the "levels" creator into this test
+        const nlohmann::json levels = {{"black_point", 90}, {"white_point", 180}};
         std::ofstream(imagePath.string() + ".json")
-            << nlohmann::json::array({{{"type", "levels"}, {"params", levels.paramsToJson()}}}).dump();
+            << nlohmann::json::array({{{"type", "levels"}, {"params", levels}}}).dump();
         Vue old = Vue::load(imagePath);
         check(old.treatmentCount() == 1, "bare-array sidecar: its treatment is loaded");
         check(!old.captureInfo().has_value(), "bare-array sidecar: no capture info, not an error");

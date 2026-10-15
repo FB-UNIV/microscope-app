@@ -1,5 +1,4 @@
 #include "levels_treatment.hpp"
-#include "treatment_factory.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -39,12 +38,5 @@ std::unique_ptr<Treatment> LevelsTreatment::fromJson(const nlohmann::json& param
     return std::make_unique<LevelsTreatment>(params.at("black_point").get<int>(),
                                               params.at("white_point").get<int>());
 }
-
-namespace {
-const bool kRegistered = [] {
-    TreatmentFactory::instance().registerType("levels", &LevelsTreatment::fromJson);
-    return true;
-}();
-} // namespace
 
 } // namespace msapp
