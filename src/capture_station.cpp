@@ -25,6 +25,15 @@ ProfileReport CaptureStation::open() {
     report.whiteBalanceApplied = config_.whiteBalanceKelvin
                                      ? camera_->setWhiteBalanceKelvin(*config_.whiteBalanceKelvin)
                                      : camera_->enableAutoWhiteBalance();
+    // Read the mode back instead of trusting the request: drivers fall back
+    // to another mode silently, which would invalidate every Calibration
+    // measured in the profile's mode (ADR 0015).
+    report.frameSize = camera_->frameSize();
+    report.pixelFormat = camera_->pixelFormat();
+    const cv::Size requested(config_.width, config_.height);
+    report.frameSizeApplied = requested.empty() || report.frameSize == requested;
+    report.pixelFormatApplied = config_.pixelFormat.empty() || report.pixelFormat == config_.pixelFormat;
+    report_ = report;
     return report;
 }
 
@@ -40,13 +49,20 @@ cv::Mat CaptureStation::grabPreview() {
     return applyWhiteBalanceGains(camera_->grab(), config_.whiteReference);
 }
 
-Vue CaptureStation::capture(const std::filesystem::path& imagePath) {
+Vue CaptureStation::capture(const std::filesystem::path& imagePath, const std::optional<Calibration>& calibration) {
+    const cv::Mat frame = grabPreview();
     CaptureInfo info;
     info.cameraBackend = camera_->backend();
-    info.exposureMs = config_.exposureMs;
-    info.whiteBalanceKelvin = config_.whiteBalanceKelvin;
+    // What the camera accepted at open(), not what the profile asked for: a
+    // refused setting (or auto) left the value unknown, so it stays null.
+    if (report_.exposureApplied) info.exposureMs = config_.exposureMs;
+    if (report_.whiteBalanceApplied) info.whiteBalanceKelvin = config_.whiteBalanceKelvin;
     info.whiteReference = config_.whiteReference;
-    return Vue::capture(grabPreview(), imagePath, info);
+    info.frameWidth = frame.cols;
+    info.frameHeight = frame.rows;
+    info.pixelFormat = camera_->pixelFormat();
+    // Vue::capture refuses a Calibration measured at another frame size.
+    return Vue::capture(frame, imagePath, info, calibration);
 }
 
 WhiteBalance CaptureStation::calibrateWhiteReference() {

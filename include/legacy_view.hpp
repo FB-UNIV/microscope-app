@@ -30,7 +30,8 @@ struct LegacyViewMetadata {
     double pixelsPerMm = 0.0;    // field 0x207: sample-plane px/mm (legacy 288.65 x objective)
     std::map<int, double> fields;  // every numeric field, incl. ones not understood yet
 
-    // e.g. {"x50", 14.4325}
+    // e.g. {"x50", 14.4325}. The tag holds no frame size, so it is left
+    // unknown here; importLegacyView fills it in from the image (ADR 0015).
     Calibration calibration() const;
 };
 
@@ -46,7 +47,9 @@ struct LegacyViewImport {
 };
 
 // Copies a legacy view into a new Vue at newImagePath (which must not exist)
-// and returns what the legacy file said about it. Adds no Treatments.
+// and returns what the legacy file said about it. Adds no Treatments. The
+// legacy calibration, sized to the view's own pixels, is stored in the new
+// Vue's sidecar, so it survives a reload (ADR 0015).
 LegacyViewImport importLegacyView(const std::filesystem::path& legacyTiff,
                                   const std::filesystem::path& newImagePath);
 

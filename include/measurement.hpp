@@ -6,6 +6,8 @@
 
 namespace msapp {
 
+class Vue;
+
 // Measurement (see CONTEXT.md): an interactive, ephemeral point-to-point
 // tool. Given two points on a Vue's rendered image and that Vue's
 // Calibration, reports the real-world distance between them. Unlike
@@ -16,6 +18,10 @@ namespace msapp {
 class Measurement {
 public:
     Measurement(cv::Point2d p1, cv::Point2d p2, Calibration calibration);
+    // Points on `vue`, measured with the Calibration it was captured or
+    // imported with — already checked against its frame size (ADR 0015).
+    // Throws std::invalid_argument when the Vue has no Calibration.
+    Measurement(cv::Point2d p1, cv::Point2d p2, const Vue& vue);
 
     double pixelDistance() const;
     double realDistanceMicrons() const;

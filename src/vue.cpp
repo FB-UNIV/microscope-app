@@ -35,6 +35,9 @@ nlohmann::json CaptureInfo::toJson() const {
         {"exposure_ms", optionalToJson(exposureMs)},
         {"white_balance_kelvin", optionalToJson(whiteBalanceKelvin)},
         {"white_reference", whiteReference.toJson()},
+        {"frame_width", frameWidth},
+        {"frame_height", frameHeight},
+        {"pixel_format", pixelFormat},
     };
 }
 
@@ -44,15 +47,23 @@ CaptureInfo CaptureInfo::fromJson(const nlohmann::json& j) {
     info.exposureMs = optionalFromJson(j, "exposure_ms");
     info.whiteBalanceKelvin = optionalFromJson(j, "white_balance_kelvin");
     if (j.contains("white_reference")) info.whiteReference = WhiteBalance::fromJson(j.at("white_reference"));
+    info.frameWidth = j.value("frame_width", 0);
+    info.frameHeight = j.value("frame_height", 0);
+    info.pixelFormat = j.value("pixel_format", std::string{});
     return info;
 }
 
 Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath,
-                 std::optional<CaptureInfo> captureInfo) {
+                 std::optional<CaptureInfo> captureInfo, std::optional<Calibration> calibration) {
     if (std::filesystem::exists(imagePath)) {
         throw std::runtime_error("Vue::capture: " + imagePath.string() +
                                   " already exists — Vues are immutable-by-path, "
                                   "generate a fresh unique path instead of reusing one");
+    }
+    // Before anything is written: a Vue must never be stored with a
+    // Calibration that doesn't hold for its pixels (ADR 0015).
+    if (calibration) {
+        calibration->requireFitsFrame(original.cols, original.rows, "Vue::capture");
     }
     if (!cv::imwrite(imagePath.string(), original)) {
         throw std::runtime_error("Vue::capture: failed to write " + imagePath.string());
@@ -62,7 +73,8 @@ Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath
     vue.imagePath_ = imagePath;
     vue.original_ = original.clone();
     vue.captureInfo_ = std::move(captureInfo);
-    if (vue.captureInfo_) {
+    vue.calibration_ = std::move(calibration);
+    if (vue.captureInfo_ || vue.calibration_) {
         vue.saveSidecar();
     }
     return vue;
@@ -109,6 +121,9 @@ void Vue::saveSidecar() {
     if (captureInfo_) {
         sidecar["capture"] = captureInfo_->toJson();
     }
+    if (calibration_) {
+        sidecar["calibration"] = calibration_->toJson();
+    }
 
     const auto path = sidecarPath();
     // Never overwrite a sidecar load() could not read: it may still be the
@@ -146,15 +161,21 @@ void Vue::loadSidecarIfPresent() {
     // stack would render differently from what was saved.
     std::vector<std::unique_ptr<Treatment>> treatments;
     std::optional<CaptureInfo> captureInfo;
+    std::optional<Calibration> calibration;
     try {
         std::ifstream in(path);
         nlohmann::json sidecar;
         in >> sidecar;
 
-        // Sidecars written before ADR 0014 are a bare array of treatments.
+        // Sidecars written before ADR 0014 are a bare array of treatments, and
+        // ones written before ADR 0015 have no "calibration": both load as
+        // uncalibrated Vues.
         const nlohmann::json& entries = sidecar.is_array() ? sidecar : sidecar.at("treatments");
         if (sidecar.is_object() && sidecar.contains("capture")) {
             captureInfo = CaptureInfo::fromJson(sidecar.at("capture"));
+        }
+        if (sidecar.is_object() && sidecar.contains("calibration") && !sidecar.at("calibration").is_null()) {
+            calibration = Calibration::fromJson(sidecar.at("calibration"));
         }
 
         auto& factory = TreatmentFactory::instance();
@@ -168,8 +189,14 @@ void Vue::loadSidecarIfPresent() {
         unreadableSidecarOnDisk_ = true;
         return;
     }
+    // A Calibration that doesn't fit the image no longer describes this
+    // photo: refused, not read as an unreadable sidecar (ADR 0015).
+    if (calibration) {
+        calibration->requireFitsFrame(original_.cols, original_.rows, "Vue::load " + path.string());
+    }
     treatments_ = std::move(treatments);
     captureInfo_ = std::move(captureInfo);
+    calibration_ = std::move(calibration);
 }
 
 } // namespace msapp

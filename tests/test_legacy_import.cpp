@@ -78,6 +78,49 @@ std::string tiffWithTag(std::uint16_t tag, const std::vector<unsigned char>& pay
     return bytes;
 }
 
+// Smallest decodable legacy view: an uncompressed 8-bit grey image whose
+// pixel (x, y) is 10 * x + y, plus tag 0xF000 — enough to run the importer
+// without the real archive.
+std::string legacyViewTiff(int width, int height, const std::vector<unsigned char>& payload) {
+    std::string bytes;
+    auto put16 = [&](std::uint16_t v) { bytes += char(v & 0xFF); bytes += char(v >> 8); };
+    auto put32 = [&](std::uint32_t v) { for (int i = 0; i < 4; ++i) bytes += char((v >> (8 * i)) & 0xFF); };
+    auto entry = [&](std::uint16_t tag, std::uint16_t type, std::uint32_t count, std::uint32_t value) {
+        put16(tag);
+        put16(type);
+        put32(count);
+        if (type == 3 && count == 1) {  // SHORT stored left-justified in the value field
+            put16(static_cast<std::uint16_t>(value));
+            put16(0);
+        } else {
+            put32(value);
+        }
+    };
+    const std::uint16_t kEntries = 10;
+    const std::uint32_t pixelOffset = 8 + 2 + 12 * kEntries + 4;
+    const std::uint32_t pixelBytes = static_cast<std::uint32_t>(width * height);
+    bytes += "II";
+    put16(42);
+    put32(8);
+    put16(kEntries);  // tags in ascending order, as TIFF requires
+    entry(256, 3, 1, static_cast<std::uint32_t>(width));   // ImageWidth
+    entry(257, 3, 1, static_cast<std::uint32_t>(height));  // ImageLength
+    entry(258, 3, 1, 8);                                   // BitsPerSample
+    entry(259, 3, 1, 1);                                   // Compression: none
+    entry(262, 3, 1, 1);                                   // Photometric: black is zero
+    entry(273, 4, 1, pixelOffset);                         // StripOffsets
+    entry(277, 3, 1, 1);                                   // SamplesPerPixel
+    entry(278, 3, 1, static_cast<std::uint32_t>(height));  // RowsPerStrip
+    entry(279, 4, 1, pixelBytes);                          // StripByteCounts
+    entry(0xF000, 1, static_cast<std::uint32_t>(payload.size()), pixelOffset + pixelBytes);
+    put32(0);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) bytes += char(10 * x + y);
+    }
+    bytes.append(payload.begin(), payload.end());
+    return bytes;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -211,6 +254,30 @@ int main(int argc, char** argv) {
         fs::remove_all(outDir);
     }
 
+    std::cout << "\n== Legacy view import: the calibration is kept in the Vue (ADR 0015) ==\n";
+    {
+        const fs::path outDir = fs::temp_directory_path() / "msapp_legacy_view_import_test";
+        fs::remove_all(outDir);
+        fs::create_directories(outDir);
+        const fs::path legacy = outDir / "CTTM1Ech2Vue3.tif";
+        std::ofstream(legacy, std::ios::binary) << legacyViewTiff(6, 4, kRealBlob);
+
+        LegacyViewImport imported = importLegacyView(legacy, outDir / "imported.png");
+        check(imported.vue.original().size() == cv::Size(6, 4) && imported.vue.original().at<unsigned char>(3, 2) == 23,
+              "pixels copied into the new Vue");
+        const auto& cal = imported.vue.calibration();
+        check(cal && cal->grossissement == "x50" && nearlyEqual(cal->pixelsPerMicron, 14.4325) &&
+                  cal->frameWidth == 6 && cal->frameHeight == 4,
+              "the Vue carries the legacy calibration, sized to the legacy view's own pixels");
+
+        Vue reloaded = Vue::load(outDir / "imported.png");
+        check(reloaded.calibration() && reloaded.calibration()->grossissement == "x50" &&
+                  nearlyEqual(reloaded.calibration()->pixelsPerMicron, 14.4325),
+              "the calibration survives a reload (sidecar), not just the import call");
+        check(!reloaded.captureInfo().has_value(), "an import records no capture settings it doesn't know");
+        fs::remove_all(outDir);
+    }
+
     std::cout << "\n== Legacy archive import: real CTTM views ==\n";
     const fs::path dataDir = legacyDataDir(argc, argv);
     if (dataDir.empty() || !fs::exists(dataDir / "CTTM1Ech1Vue1.tif")) {
@@ -235,6 +302,10 @@ int main(int argc, char** argv) {
               "import reports TP/Échantillon/Vue from the file name");
         check(imported.metadata && imported.metadata->calibration().grossissement == "x50",
               "import reports the legacy calibration");
+        const auto reloaded = Vue::load(outDir / "imported.tiff").calibration();
+        check(reloaded && reloaded->grossissement == "x50" && reloaded->frameWidth == legacyPixels.cols &&
+                  reloaded->frameHeight == legacyPixels.rows,
+              "the reloaded Vue still has the legacy calibration, at the legacy frame size");
         fs::remove_all(outDir);
     }
 

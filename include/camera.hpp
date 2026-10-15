@@ -31,6 +31,13 @@ public:
     // the device returned nothing; never returns an empty Mat.
     virtual cv::Mat grab() = 0;
 
+    // The mode the device actually negotiated, read back after open(): a
+    // driver that can't grant the requested size or pixel format falls back
+    // to another mode instead of failing (ADR 0015). Empty while closed, or
+    // when this backend can't tell.
+    virtual cv::Size frameSize() const { return {}; }
+    virtual std::string pixelFormat() const { return {}; }  // FOURCC, e.g. "MJPG"
+
     // Optional controls. Return false when this backend/device can't apply
     // the setting, so the UI can grey the control out instead of lying.
     virtual bool setExposureMs(double /*milliseconds*/) { return false; }
