@@ -1,18 +1,22 @@
 #include "main_window.hpp"
 
 #include "capture_station.hpp"
+#include "fiche.hpp"
+#include "fiche_pdf.hpp"
 #include "location_picker.hpp"
 #include "mire_dialog.hpp"
 #include "preview_widget.hpp"
 #include "preview_worker.hpp"
 #include "qt_image.hpp"
 #include "vue_window.hpp"
+#include "wait_cursor.hpp"
 
 #include <QAction>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDockWidget>
+#include <QFileDialog>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -226,6 +230,55 @@ void MainWindow::buildMenus() {
     poste->addSeparator();
     connect(poste->addAction(tr("Ouvrir le dossier des Vues")), &QAction::triggered, this,
             &MainWindow::openVueFolder);
+
+    QMenu* fiche = menuBar()->addMenu(tr("&Fiche"));
+    connect(fiche->addAction(tr("Générer la Fiche du TP…")), &QAction::triggered, this, &MainWindow::generateFiche);
+}
+
+void MainWindow::generateFiche() {
+    const auto where = location();
+    const Tp* tp = picker_->tp();
+    if (!where || where->isUnsorted() || tp == nullptr || tp->echantillons.empty()) {
+        QMessageBox::information(this, tr("Fiche du TP"),
+                                 tr("Choisissez d'abord un TP du catalogue qui a des Échantillons."));
+        return;
+    }
+    QStringList missing;
+    for (const FicheEntry& entry : ficheEntries(store_, where->department, *tp)) {
+        if (!entry.vue) missing << QString::fromStdString(entry.echantillon);
+    }
+    if (!missing.isEmpty()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Fiche du TP"),
+            tr("Ces Échantillons n'ont pas de Vue principale :\n%1\n\nGénérer quand même la Fiche ? Un cadre vide les "
+               "signalera.")
+                .arg(missing.join(QLatin1Char('\n'))));
+        if (answer != QMessageBox::Yes) return;
+    }
+
+    // Suggested beside the TP's Échantillon folders.
+    const std::filesystem::path tpFolder = store_.folder(*where).parent_path();
+    std::error_code ignored;
+    std::filesystem::create_directories(tpFolder, ignored);
+    const QString suggested =
+        toQString(tpFolder / std::filesystem::u8path("Fiche " + vueFolderName(tp->name) + ".pdf"));
+    const QString path = QFileDialog::getSaveFileName(this, tr("Enregistrer la Fiche du TP"), suggested, tr("PDF (*.pdf)"));
+    if (path.isEmpty()) return;
+
+    QStringList notes;
+    try {
+        const WaitCursor wait;
+        notes = writeFichePdf(store_, where->department, *tp, path);
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, tr("Fiche du TP"), QString::fromStdString(e.what()));
+        return;
+    }
+    QString message = tr("Fiche enregistrée :\n%1").arg(path);
+    if (!notes.isEmpty()) message += tr("\n\nÀ vérifier :\n%1").arg(notes.join(QLatin1Char('\n')));
+    message += tr("\n\nL'ouvrir pour l'imprimer ?");
+    if (QMessageBox::question(this, tr("Fiche du TP"), message) == QMessageBox::Yes) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    }
 }
 
 void MainWindow::fillGrossissements() {

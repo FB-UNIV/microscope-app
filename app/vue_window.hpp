@@ -64,6 +64,7 @@ private:
     void clicked(QPointF point);
     void analysePhases();
     void showPhaseMap();
+    void exportCopy();
     void flagPrincipale();
 
     Vue vue_;
