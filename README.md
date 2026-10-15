@@ -30,7 +30,9 @@ Vickers (`vickersHardness`); the `ICamera` capture abstraction with file
 replay and OpenCV backends — the OpenCV one is the production path, since
 the lab's Moticam A5 cameras are UVC (ADR 0013); `tools/camera_probe` for
 the first hardware check; and importers for legacy Department catalogs
-(`GMP1.txt`, …) and legacy view TIFFs with their calibration.
+(`GMP1.txt`, …) and legacy view TIFFs with their calibration. Each Vue's
+sidecar keeps the Calibration it was captured or imported with, tied to the
+frame size it was measured at (ADR 0015).
 
 **Not yet built:** Qt UI, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
@@ -78,9 +80,14 @@ tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used b
 2. Qt `MainWindow`: live preview + capture button, driving a
    `CaptureStation` built from `moticamA5Profile()` (re-applies the camera
    profile on every open, bakes in the White reference — ADR 0014), plus a
-   setup action to calibrate the White reference from a blank field.
+   setup action to calibrate the White reference from a blank field. Warn
+   when `open()`'s `ProfileReport::allApplied()` is false — above all a
+   frame size or pixel format the camera didn't grant (ADR 0015) — and pass
+   the selected Grossissement's Calibration to `capture()`; take
+   Measurements with `Measurement(p1, p2, vue)`.
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
-   until two readings agree within 0.25 %).
+   until two readings agree within 0.25 %), recording the frame size it
+   measured at — a Calibration only holds for that size (ADR 0015).
 4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
    + Échelle — see ADR 0010).
 

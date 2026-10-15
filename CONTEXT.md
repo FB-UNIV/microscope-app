@@ -11,7 +11,7 @@ The physical objective in use for a given photo (e.g. 4x/10x/40x/100x). Selected
 _Avoid_: Magnification level, zoom
 
 **Calibration**:
-The pixels-per-µm ratio tied to one Grossissement. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate, and legacy views import as `pixelsPerMicron = 0.28865 × Grossissement` (read from each legacy TIFF). The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
+The pixels-per-µm ratio tied to one Grossissement and to the frame size it was measured at. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement and frame size. Applying it to an image of another size is refused, never rescaled (ADR 0015): if the camera falls back to another mode, restore the mode or recalibrate. Each Vue keeps the Calibration it was captured or imported with in its sidecar; recalibrating changes only future Vues. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate, and legacy views import as `pixelsPerMicron = 0.28865 × Grossissement` (read from each legacy TIFF). The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
 _Avoid_: Resolution (legacy TIFF-tag term from the old app, ambiguous with image resolution)
 
 **Échelle**:
