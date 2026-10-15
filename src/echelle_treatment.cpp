@@ -1,10 +1,19 @@
 #include "echelle_treatment.hpp"
 #include "format_microns.hpp"
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace msapp {
 
-EchelleTreatment::EchelleTreatment(Calibration calibration) : calibration_(std::move(calibration)) {}
+EchelleTreatment::EchelleTreatment(Calibration calibration) : calibration_(std::move(calibration)) {
+    // Rejects NaN and infinity too: the bar length would be non-finite, and
+    // converting that to int pixels in apply() is undefined behaviour.
+    if (!std::isfinite(calibration_.pixelsPerMicron) || calibration_.pixelsPerMicron <= 0.0) {
+        throw std::invalid_argument("EchelleTreatment: Calibration.pixelsPerMicron must be > 0, got " +
+                                    std::to_string(calibration_.pixelsPerMicron));
+    }
+}
 
 double EchelleTreatment::niceBarLengthMicrons(double targetPixels, double pixelsPerMicron) {
     const double targetMicrons = targetPixels / pixelsPerMicron;

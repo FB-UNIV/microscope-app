@@ -15,6 +15,8 @@ namespace msapp {
 // with a text label, in the bottom-left corner.
 class EchelleTreatment : public Treatment {
 public:
+    // Throws std::invalid_argument unless calibration.pixelsPerMicron is
+    // finite and > 0 (a sidecar or legacy tag can carry 0).
     explicit EchelleTreatment(Calibration calibration);
 
     std::string type() const override { return "echelle"; }

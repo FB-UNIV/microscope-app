@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -73,6 +74,31 @@ int main() {
         // 100 target px at 2.5 px/um -> 40um target -> nearest nice number is 50um.
         double nice = EchelleTreatment::niceBarLengthMicrons(100.0, 2.5);
         check(nice == 50.0, "niceBarLengthMicrons(100px, 2.5px/um) == 50um (got " + std::to_string(nice) + ")");
+    }
+
+    std::cout << "\n== EchelleTreatment: a Calibration without a positive px/um is rejected ==\n";
+    {
+        auto rejects = [](double pixelsPerMicron) {
+            try {
+                EchelleTreatment echelle(Calibration{"x40", pixelsPerMicron});
+            } catch (const std::invalid_argument&) {
+                return true;
+            }
+            return false;
+        };
+        check(rejects(0.0), "0 px/um throws invalid_argument");
+        check(rejects(-2.5), "negative px/um throws invalid_argument");
+        check(rejects(std::numeric_limits<double>::quiet_NaN()), "NaN px/um throws invalid_argument");
+        check(rejects(std::numeric_limits<double>::infinity()), "infinite px/um throws invalid_argument");
+        check(!rejects(2.5), "2.5 px/um is accepted");
+
+        bool threw = false;
+        try {
+            EchelleTreatment::fromJson({{"calibration", {{"grossissement", "x40"}, {"pixels_per_micron", 0}}}});
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        check(threw, "fromJson rejects a sidecar Échelle with pixels_per_micron 0");
     }
 
     std::cout << "\n== Full pipeline: capture -> treat -> render -> save -> reload -> re-render ==\n";
@@ -190,6 +216,20 @@ int main() {
                   "an unknown treatment type loads none of the stack, not half of it, and is named");
         } catch (const std::exception& e) {
             check(false, std::string("an unknown treatment type does not stop the photo from loading (threw: ") +
+                             e.what() + ")");
+        }
+
+        const fs::path zeroScaleImage = dir / "zero_scale.png";
+        cv::imwrite(zeroScaleImage.string(), sample);
+        std::ofstream(zeroScaleImage.string() + ".json")
+            << R"({"treatments": [{"type": "echelle", "params":)"
+               R"( {"calibration": {"grossissement": "x40", "pixels_per_micron": 0}}}]})";
+        try {
+            Vue zeroScale = Vue::load(zeroScaleImage);
+            check(zeroScale.treatmentCount() == 0 && zeroScale.sidecarError(),
+                  "a sidecar Échelle with 0 px/um is reported, never drawn");
+        } catch (const std::exception& e) {
+            check(false, std::string("a sidecar Échelle with 0 px/um does not stop the photo from loading (threw: ") +
                              e.what() + ")");
         }
         fs::remove_all(dir);
