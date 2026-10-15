@@ -188,9 +188,12 @@ LegacyViewImport importLegacyView(const std::filesystem::path& legacyTiff,
     if (pixels.empty()) {
         throw std::runtime_error("importLegacyView: cannot decode " + legacyTiff.string());
     }
-    return LegacyViewImport{Vue::capture(pixels, newImagePath),
-                            parseLegacyViewFileName(legacyTiff.filename().string()),
-                            readLegacyViewMetadata(legacyTiff)};
+    // Everything that can throw runs before the Vue is written: a Vue left
+    // behind by a failed import would block any retry onto the same path
+    // (immutable-by-path).
+    auto metadata = readLegacyViewMetadata(legacyTiff);
+    auto name = parseLegacyViewFileName(legacyTiff.filename().string());
+    return LegacyViewImport{Vue::capture(pixels, newImagePath), std::move(name), std::move(metadata)};
 }
 
 } // namespace msapp

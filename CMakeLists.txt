@@ -48,7 +48,7 @@ set(MSAPP_LEGACY_DATA_DIR "" CACHE PATH "Folder with legacy Metal view TIFFs (op
 
 enable_testing()
 foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera test_legacy_import
-                  test_white_reference test_capture_station)
+                  test_white_reference test_capture_station test_treatment_registration)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE microscope_core)
     target_compile_definitions(${test_name} PRIVATE MSAPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

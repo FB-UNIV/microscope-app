@@ -1,11 +1,19 @@
 #include "echelle_treatment.hpp"
-#include "treatment_factory.hpp"
 #include "format_microns.hpp"
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace msapp {
 
-EchelleTreatment::EchelleTreatment(Calibration calibration) : calibration_(std::move(calibration)) {}
+EchelleTreatment::EchelleTreatment(Calibration calibration) : calibration_(std::move(calibration)) {
+    // Rejects NaN and infinity too: the bar length would be non-finite, and
+    // converting that to int pixels in apply() is undefined behaviour.
+    if (!std::isfinite(calibration_.pixelsPerMicron) || calibration_.pixelsPerMicron <= 0.0) {
+        throw std::invalid_argument("EchelleTreatment: Calibration.pixelsPerMicron must be > 0, got " +
+                                    std::to_string(calibration_.pixelsPerMicron));
+    }
+}
 
 double EchelleTreatment::niceBarLengthMicrons(double targetPixels, double pixelsPerMicron) {
     const double targetMicrons = targetPixels / pixelsPerMicron;
@@ -62,12 +70,5 @@ nlohmann::json EchelleTreatment::paramsToJson() const {
 std::unique_ptr<Treatment> EchelleTreatment::fromJson(const nlohmann::json& params) {
     return std::make_unique<EchelleTreatment>(Calibration::fromJson(params.at("calibration")));
 }
-
-namespace {
-const bool kRegistered = [] {
-    TreatmentFactory::instance().registerType("echelle", &EchelleTreatment::fromJson);
-    return true;
-}();
-} // namespace
 
 } // namespace msapp

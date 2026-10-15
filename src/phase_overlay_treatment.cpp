@@ -1,6 +1,5 @@
 #include "phase_overlay_treatment.hpp"
 #include "phase_analysis.hpp"
-#include "treatment_factory.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -47,12 +46,5 @@ nlohmann::json PhaseOverlayTreatment::paramsToJson() const {
 std::unique_ptr<Treatment> PhaseOverlayTreatment::fromJson(const nlohmann::json& params) {
     return std::make_unique<PhaseOverlayTreatment>(params.at("threshold").get<int>());
 }
-
-namespace {
-const bool kRegistered = [] {
-    TreatmentFactory::instance().registerType("phase_overlay", &PhaseOverlayTreatment::fromJson);
-    return true;
-}();
-} // namespace
 
 } // namespace msapp

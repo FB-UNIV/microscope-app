@@ -16,6 +16,17 @@ std::optional<double> optionalFromJson(const nlohmann::json& j, const char* key)
     return j.at(key).get<double>();
 }
 
+// First free name among <sidecar>.unreadable, <sidecar>.unreadable.2, ...
+std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar) {
+    auto candidate = sidecar;
+    candidate += ".unreadable";
+    for (int n = 2; std::filesystem::exists(candidate); ++n) {
+        candidate = sidecar;
+        candidate += ".unreadable." + std::to_string(n);
+    }
+    return candidate;
+}
+
 } // namespace
 
 nlohmann::json CaptureInfo::toJson() const {
@@ -89,7 +100,7 @@ std::filesystem::path Vue::sidecarPath() const {
     return path;
 }
 
-void Vue::saveSidecar() const {
+void Vue::saveSidecar() {
     nlohmann::json treatments = nlohmann::json::array();
     for (const auto& t : treatments_) {
         treatments.push_back({{"type", t->type()}, {"params", t->paramsToJson()}});
@@ -99,11 +110,30 @@ void Vue::saveSidecar() const {
         sidecar["capture"] = captureInfo_->toJson();
     }
 
-    std::ofstream out(sidecarPath());
-    if (!out) {
-        throw std::runtime_error("Vue::saveSidecar: failed to write " + sidecarPath().string());
+    const auto path = sidecarPath();
+    // Never overwrite a sidecar load() could not read: it may still be the
+    // only record of this Vue's treatments and capture settings (ADR 0004 —
+    // no write destroys an earlier file).
+    if (unreadableSidecarOnDisk_) {
+        if (std::filesystem::exists(path)) {
+            std::filesystem::rename(path, unusedAsidePath(path));
+        }
+        unreadableSidecarOnDisk_ = false;
     }
+
+    // Write a temp file, then rename it over the sidecar: a crash or full
+    // disk mid-write leaves the previous sidecar, never a truncated one.
+    auto temp = path;
+    temp += ".tmp";
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
     out << sidecar.dump(2);
+    out.close();
+    if (out.fail()) {
+        std::error_code ignored;
+        std::filesystem::remove(temp, ignored);
+        throw std::runtime_error("Vue::saveSidecar: failed to write " + temp.string());
+    }
+    std::filesystem::rename(temp, path);
 }
 
 void Vue::loadSidecarIfPresent() {
@@ -112,20 +142,34 @@ void Vue::loadSidecarIfPresent() {
         return; // No treatments applied yet — a valid state, not an error.
     }
 
-    std::ifstream in(path);
-    nlohmann::json sidecar;
-    in >> sidecar;
+    // Built aside and kept only if the whole sidecar reads: half a treatment
+    // stack would render differently from what was saved.
+    std::vector<std::unique_ptr<Treatment>> treatments;
+    std::optional<CaptureInfo> captureInfo;
+    try {
+        std::ifstream in(path);
+        nlohmann::json sidecar;
+        in >> sidecar;
 
-    // Sidecars written before ADR 0014 are a bare array of treatments.
-    const nlohmann::json& treatments = sidecar.is_array() ? sidecar : sidecar.at("treatments");
-    if (sidecar.is_object() && sidecar.contains("capture")) {
-        captureInfo_ = CaptureInfo::fromJson(sidecar.at("capture"));
-    }
+        // Sidecars written before ADR 0014 are a bare array of treatments.
+        const nlohmann::json& entries = sidecar.is_array() ? sidecar : sidecar.at("treatments");
+        if (sidecar.is_object() && sidecar.contains("capture")) {
+            captureInfo = CaptureInfo::fromJson(sidecar.at("capture"));
+        }
 
-    auto& factory = TreatmentFactory::instance();
-    for (const auto& entry : treatments) {
-        treatments_.push_back(factory.create(entry.at("type").get<std::string>(), entry.at("params")));
+        auto& factory = TreatmentFactory::instance();
+        for (const auto& entry : entries) {
+            treatments.push_back(factory.create(entry.at("type").get<std::string>(), entry.at("params")));
+        }
+    } catch (const std::exception& e) {
+        // Losing the sidecar never loses the photo (ADR 0003): load it bare
+        // and report why. The file is left as is; saveSidecar() sets it aside.
+        sidecarError_ = path.string() + ": " + e.what();
+        unreadableSidecarOnDisk_ = true;
+        return;
     }
+    treatments_ = std::move(treatments);
+    captureInfo_ = std::move(captureInfo);
 }
 
 } // namespace msapp

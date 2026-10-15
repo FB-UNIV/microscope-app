@@ -51,7 +51,8 @@ make
 real capture until real hardware is available), runs it through Levels +
 Échelle, saves it as a Vue, reloads the Vue from disk, and checks the
 reload round-trips pixel-identically. Output images land in
-`tests/output/`.
+`msapp_pipeline_test/` under the system temp directory (the test prints
+their full paths), never in the source tree.
 
 ## Layout
 
