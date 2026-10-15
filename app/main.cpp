@@ -1,30 +1,57 @@
+#include "catalog.hpp"
 #include "main_window.hpp"
+#include "qt_image.hpp"
+#include "vue_store.hpp"
 #include "workstation_config.hpp"
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QStandardPaths>
 #include <QTimer>
 
 #include <exception>
 #include <filesystem>
+#include <utility>
 
 namespace {
 
-// The workstation's camera profile, or the Moticam A5 defaults when it has
-// none yet or its config can't be read — said in `warnings`, never fatal.
-msapp::CameraConfig loadCameraProfile(QStringList& warnings) {
+// The workstation config, catalog and Vue root. Nothing here is fatal:
+// whatever can't be read falls back to defaults — the Moticam A5 profile,
+// no catalog (Vues go to Unsorted, ADR 0008) — and says so in `warnings`.
+msapp::AppSetup loadSetup() {
+    msapp::AppSetup setup;
     try {
-        const msapp::LoadedWorkstationConfig loaded = msapp::loadWorkstationConfig(msapp::defaultWorkstationConfigPath());
-        if (!loaded.error.empty()) {
-            warnings << QObject::tr("Configuration du poste illisible, profil Moticam A5 par défaut utilisé : %1")
-                            .arg(QString::fromStdString(loaded.error));
-        }
-        return loaded.config.camera;
+        setup.configPath = msapp::defaultWorkstationConfigPath();
+        setup.catalogPath = msapp::defaultCatalogPath();
     } catch (const std::exception& e) {
-        warnings << QObject::tr("Configuration du poste introuvable, profil Moticam A5 par défaut utilisé : %1")
-                        .arg(QString::fromStdString(e.what()));
-        return msapp::moticamA5Profile();
+        setup.warnings << QObject::tr("Pas de dossier de configuration, réglages par défaut : %1")
+                              .arg(QString::fromStdString(e.what()));
     }
+    if (!setup.configPath.empty()) {
+        const msapp::LoadedWorkstationConfig loaded = msapp::loadWorkstationConfig(setup.configPath);
+        setup.config = loaded.config;
+        if (!loaded.error.empty()) {
+            setup.warnings << QObject::tr("Configuration du poste illisible, réglages par défaut : %1")
+                                  .arg(QString::fromStdString(loaded.error));
+        }
+    }
+    if (!setup.catalogPath.empty()) {
+        const msapp::LoadedCatalog loaded = msapp::loadCatalog(setup.catalogPath);
+        setup.catalog = loaded.catalog;
+        if (!loaded.error.empty()) {
+            setup.warnings << QObject::tr("Catalogue de TP illisible, Vues rangées dans « Non classé » : %1")
+                                  .arg(QString::fromStdString(loaded.error));
+        }
+    }
+    setup.camera = setup.config.camera;
+    if (!setup.config.vueRoot.empty()) {
+        setup.vueRoot = setup.config.vueRoot;
+    } else if (!setup.configPath.empty()) {
+        setup.vueRoot = msapp::defaultVueRoot();
+    } else {
+        setup.vueRoot = msapp::toPath(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)) / "vues";
+    }
+    return setup;
 }
 
 } // namespace
@@ -52,15 +79,15 @@ int main(int argc, char** argv) {
     parser.addOptions({smokeTest, device, api, size, replay});
     parser.process(app);
 
-    QStringList warnings;
-    msapp::CameraConfig camera = loadCameraProfile(warnings);
+    msapp::AppSetup setup = loadSetup();
+    msapp::CameraConfig& camera = setup.camera;
     if (parser.isSet(device)) {
         bool ok = false;
         const int index = parser.value(device).toInt(&ok);
         if (ok && index >= 0) {
             camera.deviceIndex = index;
         } else {
-            warnings << QObject::tr("--device attend un numéro de caméra (0, 1, ...) : ignoré.");
+            setup.warnings << QObject::tr("--device attend un numéro de caméra (0, 1, ...) : ignoré.");
         }
     }
     if (parser.isSet(api)) {
@@ -76,7 +103,7 @@ int main(int argc, char** argv) {
             camera.width = width;
             camera.height = height;
         } else {
-            warnings << QObject::tr("--size attend LARGEURxHAUTEUR, par exemple 1920x1080 : ignoré.");
+            setup.warnings << QObject::tr("--size attend LARGEURxHAUTEUR, par exemple 1920x1080 : ignoré.");
         }
     }
     if (parser.isSet(replay)) {
@@ -87,7 +114,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    msapp::MainWindow window(camera, warnings);
+    msapp::MainWindow window(std::move(setup));
     window.show();
     if (parser.isSet(smokeTest)) {
         // Queued, so it runs once the event loop has started: the window
