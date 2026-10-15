@@ -146,6 +146,41 @@ int main() {
               "listVues sorts by capture time and skips sidecars, set-aside files and non-images");
     }
 
+    std::cout << "\n== Vue principale: the one Vue on the Fiche (ADR 0016) ==\n";
+    {
+        const VueLocation ech{"GMP", "TP 4", "Principale"};
+        const cv::Mat frame(8, 8, CV_8UC3, cv::Scalar(1, 2, 3));
+        const Vue first = Vue::capture(frame, store.newVuePath(ech));
+        const Vue second = Vue::capture(frame, store.newVuePath(ech));
+        check(!store.principale(ech), "no Vue principale until one is flagged");
+
+        store.setPrincipale(ech, first.imagePath());
+        check(store.principale(ech) == first.imagePath(), "the flagged Vue is the Vue principale");
+        store.setPrincipale(ech, second.imagePath());
+        check(store.principale(ech) == second.imagePath(), "flagging another one replaces it: never two");
+        check(store.listVues(ech).size() == 2, "the flag file is not listed as a Vue");
+
+        const Vue elsewhere = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()));
+        check(!throwsWith<std::invalid_argument>([&] { store.setPrincipale(ech, elsewhere.imagePath()); }).empty() &&
+                  store.principale(ech) == second.imagePath(),
+              "a Vue of another Échantillon can't be flagged here, and the flag stays");
+        check(!throwsWith<std::invalid_argument>([&] { store.setPrincipale(ech, store.folder(ech) / "missing.tiff"); })
+                   .empty(),
+              "a file that doesn't exist can't be flagged");
+
+        std::ofstream(store.folder(ech) / "vue-principale.json", std::ios::binary | std::ios::trunc)
+            << "{\"vue\": \"../../../Unsorted/" << elsewhere.imagePath().filename().string() << "\"}";
+        check(!store.principale(ech), "a flag pointing outside the Échantillon's folder is ignored");
+        std::ofstream(store.folder(ech) / "vue-principale.json", std::ios::binary | std::ios::trunc) << "{oops";
+        check(!store.principale(ech), "an unreadable flag means none flagged, not an error");
+
+        store.setPrincipale(ech, first.imagePath());
+        store.clearPrincipale(ech);
+        check(!store.principale(ech) && fs::exists(first.imagePath()), "clearing unflags it; the Vue stays");
+        store.clearPrincipale(ech);
+        check(!store.principale(ech), "clearing when none is flagged is fine");
+    }
+
     std::cout << "\n== Where Vues go by default ==\n";
     {
         check(defaultVueRoot() == defaultWorkstationConfigPath().parent_path() / "vues",
