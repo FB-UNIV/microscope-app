@@ -6,8 +6,16 @@
 
 namespace msapp {
 
-OpenCvCamera::OpenCvCamera(int deviceIndex, int apiPreference, cv::Size requestedSize)
-    : deviceIndex_(deviceIndex), apiPreference_(apiPreference), requestedSize_(requestedSize) {}
+OpenCvCamera::OpenCvCamera(int deviceIndex, int apiPreference, cv::Size requestedSize, std::string pixelFormat)
+    : deviceIndex_(deviceIndex),
+      apiPreference_(apiPreference),
+      requestedSize_(requestedSize),
+      pixelFormat_(std::move(pixelFormat)) {
+    if (!pixelFormat_.empty() && pixelFormat_.size() != 4) {
+        throw std::invalid_argument("OpenCvCamera: pixel format must be a 4-character FOURCC like \"MJPG\", got '" +
+                                    pixelFormat_ + "'");
+    }
+}
 
 void OpenCvCamera::open() {
     if (capture_.isOpened()) return;
@@ -16,6 +24,11 @@ void OpenCvCamera::open() {
                                  ". Check it is plugged in and not held by another program (e.g. "
                                  "MotiConnect). The Moticam A5 is UVC and should appear here "
                                  "(ADR 0013); WinUSB-only Motic models do not (ADR 0011).");
+    }
+    // Format before size: some drivers only offer the large modes in MJPG.
+    if (!pixelFormat_.empty()) {
+        capture_.set(cv::CAP_PROP_FOURCC,
+                     cv::VideoWriter::fourcc(pixelFormat_[0], pixelFormat_[1], pixelFormat_[2], pixelFormat_[3]));
     }
     if (!requestedSize_.empty()) {
         capture_.set(cv::CAP_PROP_FRAME_WIDTH, requestedSize_.width);
@@ -46,9 +59,31 @@ bool OpenCvCamera::setExposureMs(double milliseconds) {
     return capture_.set(cv::CAP_PROP_EXPOSURE, value);
 }
 
+bool OpenCvCamera::enableAutoExposure() {
+    if (!capture_.isOpened()) return false;
+    // V4L2 uses 3 ("aperture priority") for auto; the Windows backends take 1.
+    const int api = static_cast<int>(capture_.get(cv::CAP_PROP_BACKEND));
+    return capture_.set(cv::CAP_PROP_AUTO_EXPOSURE, api == cv::CAP_V4L2 ? 3 : 1);
+}
+
 bool OpenCvCamera::setGain(double gain) {
     if (!capture_.isOpened()) return false;
     return capture_.set(cv::CAP_PROP_GAIN, gain);
+}
+
+bool OpenCvCamera::setWhiteBalanceKelvin(double kelvin) {
+    if (!capture_.isOpened() || kelvin <= 0.0) return false;
+    capture_.set(cv::CAP_PROP_AUTO_WB, 0);
+    capture_.set(cv::CAP_PROP_WB_TEMPERATURE, kelvin);
+    // Trust the read-back, not set()'s return value: drivers accept and
+    // silently clamp or ignore values outside their range.
+    return std::abs(capture_.get(cv::CAP_PROP_WB_TEMPERATURE) - kelvin) < 1.0;
+}
+
+bool OpenCvCamera::enableAutoWhiteBalance() {
+    if (!capture_.isOpened()) return false;
+    capture_.set(cv::CAP_PROP_AUTO_WB, 1);
+    return capture_.get(cv::CAP_PROP_AUTO_WB) == 1.0;
 }
 
 cv::Size OpenCvCamera::frameSize() const {

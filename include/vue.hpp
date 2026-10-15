@@ -1,11 +1,28 @@
 #pragma once
 
 #include "treatment.hpp"
+#include "white_balance.hpp"
 #include <filesystem>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace msapp {
+
+// How a Vue was captured (ADR 0014): the camera settings CaptureStation
+// applied and the White reference gains already baked into the original,
+// so a photo's colour can be explained or reproduced later. Stored under
+// "capture" in the sidecar.
+struct CaptureInfo {
+    std::string cameraBackend;
+    std::optional<double> exposureMs;
+    std::optional<double> whiteBalanceKelvin;
+    WhiteBalance whiteReference;
+
+    nlohmann::json toJson() const;
+    static CaptureInfo fromJson(const nlohmann::json& j);
+};
 
 // Vue (see CONTEXT.md): one saved photo + its Treatments.
 //
@@ -22,7 +39,10 @@ public:
     // `imagePath` already exists — Vues are immutable-by-path (see the
     // race/overwrite discussion behind ADR 0004); callers must generate a
     // fresh unique path per capture, never reuse one.
-    static Vue capture(const cv::Mat& original, const std::filesystem::path& imagePath);
+    // With captureInfo, the sidecar is written immediately so the capture
+    // settings exist on disk even before any Treatment is added.
+    static Vue capture(const cv::Mat& original, const std::filesystem::path& imagePath,
+                       std::optional<CaptureInfo> captureInfo = std::nullopt);
 
     // Loads an existing Vue: reads the original image, plus its sidecar
     // (imagePath + ".json") if one exists — a Vue with no treatments yet
@@ -42,6 +62,9 @@ public:
     const std::filesystem::path& imagePath() const { return imagePath_; }
     const cv::Mat& original() const { return original_; }
     std::size_t treatmentCount() const { return treatments_.size(); }
+    // Empty for Vues captured without a CaptureStation (tests, imports) and
+    // for sidecars written before ADR 0014.
+    const std::optional<CaptureInfo>& captureInfo() const { return captureInfo_; }
 
     std::filesystem::path sidecarPath() const;
 
@@ -49,6 +72,7 @@ private:
     std::filesystem::path imagePath_;
     cv::Mat original_;
     std::vector<std::unique_ptr<Treatment>> treatments_;
+    std::optional<CaptureInfo> captureInfo_;
 
     void saveSidecar() const;
     void loadSidecarIfPresent();
