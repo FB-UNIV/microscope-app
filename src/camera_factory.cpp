@@ -6,6 +6,65 @@
 
 namespace msapp {
 
+namespace {
+
+nlohmann::json optionalToJson(const std::optional<double>& value) {
+    return value ? nlohmann::json(*value) : nlohmann::json(nullptr);
+}
+
+std::optional<double> optionalFromJson(const nlohmann::json& j, const char* key) {
+    if (!j.contains(key) || j.at(key).is_null()) return std::nullopt;
+    return j.at(key).get<double>();
+}
+
+} // namespace
+
+nlohmann::json CameraConfig::toJson() const {
+    nlohmann::json framesJson = nlohmann::json::array();
+    for (const auto& frame : frames) framesJson.push_back(frame.u8string());
+    return {
+        {"backend", backend},
+        {"device_index", deviceIndex},
+        {"capture_api", captureApi},
+        {"width", width},
+        {"height", height},
+        {"pixel_format", pixelFormat},
+        {"exposure_ms", optionalToJson(exposureMs)},
+        {"white_balance_kelvin", optionalToJson(whiteBalanceKelvin)},
+        {"white_reference", whiteReference.toJson()},
+        {"frames", framesJson},
+    };
+}
+
+CameraConfig CameraConfig::fromJson(const nlohmann::json& j) {
+    CameraConfig c;
+    c.backend = j.at("backend").get<std::string>();
+    c.deviceIndex = j.value("device_index", c.deviceIndex);
+    c.captureApi = j.value("capture_api", c.captureApi);
+    c.width = j.value("width", c.width);
+    c.height = j.value("height", c.height);
+    c.pixelFormat = j.value("pixel_format", c.pixelFormat);
+    c.exposureMs = optionalFromJson(j, "exposure_ms");
+    c.whiteBalanceKelvin = optionalFromJson(j, "white_balance_kelvin");
+    if (j.contains("white_reference")) c.whiteReference = WhiteBalance::fromJson(j.at("white_reference"));
+    if (j.contains("frames")) {
+        for (const auto& frame : j.at("frames")) c.frames.push_back(std::filesystem::u8path(frame.get<std::string>()));
+    }
+    return c;
+}
+
+CameraConfig moticamA5Profile() {
+    CameraConfig c;
+    c.backend = "opencv";
+    c.deviceIndex = 0;
+    c.captureApi = "dshow";
+    c.width = 3840;
+    c.height = 2160;
+    c.pixelFormat = "MJPG";
+    c.whiteBalanceKelvin = 5000.0;
+    return c;
+}
+
 int captureApiFromName(const std::string& name) {
     if (name == "auto") return cv::CAP_ANY;
     if (name == "dshow") return cv::CAP_DSHOW;
@@ -21,7 +80,7 @@ std::unique_ptr<ICamera> makeCamera(const CameraConfig& config) {
     }
     if (config.backend == "opencv") {
         return std::make_unique<OpenCvCamera>(config.deviceIndex, captureApiFromName(config.captureApi),
-                                              cv::Size(config.width, config.height));
+                                              cv::Size(config.width, config.height), config.pixelFormat);
     }
     if (config.backend == "motic") {
         throw std::runtime_error(
