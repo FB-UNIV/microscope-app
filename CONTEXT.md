@@ -34,6 +34,14 @@ _Avoid_: Threshold in UI text (French UI), Binarisation
 Hardness from the two diagonals of a pyramid indent, measured on a Vue with the Measurement tool: HV = 1.85409 × load / mean diagonal² (legacy coefficient, ADR 0012). The legacy app fixed the load at 0.5 kgf (HV0.5).
 _Avoid_: Hardness alone (several scales exist), Brinell/Rockwell (different tests)
 
+**White reference**:
+R/G/B gains measured once per microscope from a blank field (lamp on, no specimen) that make it neutral, baked into every capture taken on that microscope (ADR 0014). Corrects the green/magenta tint a camera's colour-temperature control can't reach. The legacy app kept the same thing as per-workstation gains.
+_Avoid_: White balance (the camera's own colour-temperature control, locked separately), Calibration (reserved for px/µm)
+
+**Camera profile**:
+A workstation's camera settings — capture API, frame size, pixel format, exposure, colour temperature, White reference — re-applied every time the camera opens, because the Moticam A5 keeps whatever the last program set.
+_Avoid_: Camera settings dialog, Driver settings
+
 ### Session organisation
 
 **Department**:

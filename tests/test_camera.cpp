@@ -131,6 +131,48 @@ int main() {
         bogus.backend = "matrox";
         check(!throwsWith<std::invalid_argument>([&] { makeCamera(bogus); }).empty(),
               "unknown backend throws invalid_argument");
+
+        CameraConfig badFormat;
+        badFormat.backend = "opencv";
+        badFormat.pixelFormat = "MJ";
+        check(!throwsWith<std::invalid_argument>([&] { makeCamera(badFormat); }).empty(),
+              "a pixel format that isn't a 4-character FOURCC is rejected");
+    }
+
+    std::cout << "\n== Moticam A5 profile (measured with camera_probe) ==\n";
+    {
+        const CameraConfig a5 = moticamA5Profile();
+        check(a5.backend == "opencv" && a5.captureApi == "dshow" && a5.deviceIndex == 0,
+              "DirectShow at index 0 — the only API exposing white balance");
+        check(a5.width == 3840 && a5.height == 2160 && a5.pixelFormat == "MJPG", "3840x2160 MJPG");
+        check(a5.whiteBalanceKelvin && *a5.whiteBalanceKelvin == 5000.0, "colour temperature locked at 5000 K");
+        check(!a5.exposureMs, "exposure left to the camera until measured through a microscope");
+        check(a5.whiteReference.isIdentity(), "White reference identity until calibrated");
+        check(makeCamera(a5)->backend() == "opencv", "builds without a camera attached");
+    }
+
+    std::cout << "\n== CameraConfig JSON: the workstation config file ==\n";
+    {
+        CameraConfig c = moticamA5Profile();
+        c.exposureMs = 12.5;
+        c.whiteReference = WhiteBalance{0.6, 1.0, 1.7};
+        const CameraConfig back = CameraConfig::fromJson(c.toJson());
+        check(back.backend == c.backend && back.captureApi == c.captureApi && back.width == c.width &&
+                  back.height == c.height && back.pixelFormat == c.pixelFormat && back.deviceIndex == c.deviceIndex,
+              "round-trips backend, API, size, format, index");
+        check(back.exposureMs && *back.exposureMs == 12.5 && back.whiteBalanceKelvin && *back.whiteBalanceKelvin == 5000.0,
+              "round-trips exposure and colour temperature");
+        check(back.whiteReference.red == 0.6 && back.whiteReference.blue == 1.7, "round-trips the White reference");
+        check(c.toJson().at("exposure_ms").is_number() && CameraConfig{}.toJson().at("exposure_ms").is_null(),
+              "unset exposure is written as null, not 0");
+
+        const CameraConfig minimal = CameraConfig::fromJson(nlohmann::json{{"backend", "opencv"}});
+        check(minimal.captureApi == "auto" && !minimal.exposureMs && minimal.whiteReference.isIdentity(),
+              "missing keys take defaults, so older config files still load");
+
+        CameraConfig files;
+        files.frames = {dir / "a.png"};
+        check(CameraConfig::fromJson(files.toJson()).frames == files.frames, "file-replay frame paths round-trip");
     }
 
     fs::remove_all(dir);

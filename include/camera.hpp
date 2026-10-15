@@ -1,17 +1,11 @@
 #pragma once
 
+#include "white_balance.hpp"
+
 #include <opencv2/core.hpp>
 #include <string>
 
 namespace msapp {
-
-// Per-channel gains; legacy ConfigurationMetal stored these per workstation
-// (e.g. R 1.745, G 1.0, B 2.576 for the Basler it last drove).
-struct WhiteBalance {
-    double red = 1.0;
-    double green = 1.0;
-    double blue = 1.0;
-};
 
 // Capture abstraction required by ADR 0001: everything above this interface
 // (Vue::capture, UI, treatments) is backend-agnostic. Backends today:
@@ -40,8 +34,14 @@ public:
     // Optional controls. Return false when this backend/device can't apply
     // the setting, so the UI can grey the control out instead of lying.
     virtual bool setExposureMs(double /*milliseconds*/) { return false; }
+    virtual bool enableAutoExposure() { return false; }
     virtual bool setGain(double /*gain*/) { return false; }
+    // Hardware per-channel gains — UVC cameras don't offer them; the White
+    // reference is applied in software by CaptureStation instead (ADR 0014).
     virtual bool setWhiteBalance(const WhiteBalance& /*gains*/) { return false; }
+    // Locks the camera's colour temperature (turns auto white balance off).
+    virtual bool setWhiteBalanceKelvin(double /*kelvin*/) { return false; }
+    virtual bool enableAutoWhiteBalance() { return false; }
 };
 
 } // namespace msapp
