@@ -193,7 +193,15 @@ LegacyViewImport importLegacyView(const std::filesystem::path& legacyTiff,
     // (immutable-by-path).
     auto metadata = readLegacyViewMetadata(legacyTiff);
     auto name = parseLegacyViewFileName(legacyTiff.filename().string());
-    return LegacyViewImport{Vue::capture(pixels, newImagePath), std::move(name), std::move(metadata)};
+    std::optional<Calibration> calibration;
+    if (metadata) {
+        // The legacy px/mm was measured on the frame the legacy app stored.
+        calibration = metadata->calibration();
+        calibration->frameWidth = pixels.cols;
+        calibration->frameHeight = pixels.rows;
+    }
+    return LegacyViewImport{Vue::capture(pixels, newImagePath, std::nullopt, calibration), std::move(name),
+                            std::move(metadata)};
 }
 
 } // namespace msapp

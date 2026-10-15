@@ -20,7 +20,12 @@ public:
     explicit EchelleTreatment(Calibration calibration);
 
     std::string type() const override { return "echelle"; }
+    // Throws std::runtime_error when the Calibration was measured at another
+    // frame size than `input` — the bar would show a false length (ADR 0015).
     cv::Mat apply(const cv::Mat& input) const override;
+    std::optional<std::string> frameMismatch(int width, int height) const override {
+        return calibration_.frameMismatch(width, height);
+    }
     nlohmann::json paramsToJson() const override;
 
     static std::unique_ptr<Treatment> fromJson(const nlohmann::json& params);

@@ -33,6 +33,7 @@ double EchelleTreatment::niceBarLengthMicrons(double targetPixels, double pixels
 
 
 cv::Mat EchelleTreatment::apply(const cv::Mat& input) const {
+    calibration_.requireFitsFrame(input.cols, input.rows, "EchelleTreatment::apply");
     cv::Mat output = input.clone();
 
     const double targetPixels = output.cols / 6.0;

@@ -10,6 +10,7 @@
 
 #include "measurement.hpp"
 #include "calibration.hpp"
+#include "echelle_treatment.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -92,6 +93,49 @@ int main() {
             threw = true;
         }
         check(threw, "negative pixels-per-micron throws invalid_argument");
+    }
+
+    std::cout << "\n== Calibration: only holds at the frame size it was measured at (ADR 0015) ==\n";
+    {
+        const Calibration at4k{"x40", 2.5, 3840, 2160};
+        check(at4k.fitsFrame(3840, 2160), "same frame size fits");
+        check(!at4k.fitsFrame(1024, 768) && !at4k.fitsFrame(1920, 1080),
+              "a fallback mode does not fit, whether or not its aspect ratio matches");
+        check(calib.fitsFrame(1024, 768) && !calib.hasFrameSize(),
+              "a Calibration without a frame size (pre-ADR 0015) is accepted unverified");
+
+        std::string message;
+        try {
+            at4k.requireFitsFrame(1024, 768, "test");
+        } catch (const std::runtime_error& e) {
+            message = e.what();
+        }
+        check(message.find("3840x2160") != std::string::npos && message.find("1024x768") != std::string::npos,
+              "a mismatch is refused, naming both sizes (got '" + message + "')");
+
+        const Calibration reloaded = Calibration::fromJson(at4k.toJson());
+        check(reloaded.grossissement == "x40" && nearlyEqual(reloaded.pixelsPerMicron, 2.5) &&
+                  reloaded.frameWidth == 3840 && reloaded.frameHeight == 2160,
+              "frame size round-trips through JSON");
+        const Calibration old = Calibration::fromJson({{"grossissement", "x40"}, {"pixels_per_micron", 2.5}});
+        check(!old.hasFrameSize(), "JSON written before ADR 0015 (no frame size) still loads, as unknown");
+    }
+
+    std::cout << "\n== Échelle: refuses a Calibration measured at another frame size ==\n";
+    {
+        const cv::Mat image(100, 200, CV_8UC3, cv::Scalar::all(128));
+        EchelleTreatment matching(Calibration{"x40", 2.5, 200, 100});
+        check(!matching.apply(image).empty(), "matching frame size renders");
+        EchelleTreatment unknown(calib);
+        check(!unknown.apply(image).empty(), "unknown frame size renders (pre-ADR 0015 Échelle params)");
+
+        bool threw = false;
+        try {
+            EchelleTreatment(Calibration{"x40", 2.5, 400, 200}).apply(image);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        check(threw, "a bar from a Calibration measured at 400x200 is not drawn on a 200x100 image");
     }
 
     std::cout << "\n== Measurement: display label ==\n";

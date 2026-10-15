@@ -14,7 +14,8 @@ class OpenCvCamera : public ICamera {
 public:
     // requestedSize: frame size asked for at open (UVC cameras often start at
     // 640x480 otherwise); empty keeps the device default. The device may
-    // pick the nearest mode it supports — read frameSize() after open().
+    // pick the nearest mode it supports — read frameSize() and pixelFormat()
+    // after open(); CaptureStation compares them with the profile (ADR 0015).
     // pixelFormat: FOURCC such as "MJPG", requested before the size (the
     // Moticam A5 delivers its HD modes as MJPG); empty keeps the default.
     explicit OpenCvCamera(int deviceIndex, int apiPreference = cv::CAP_ANY, cv::Size requestedSize = {},
@@ -38,7 +39,10 @@ public:
     bool enableAutoWhiteBalance() override;
 
     // Actual negotiated frame size; empty while closed.
-    cv::Size frameSize() const;
+    cv::Size frameSize() const override;
+    // Actual negotiated FOURCC; empty while closed or when the driver reports
+    // no printable code (Media Foundation often returns none).
+    std::string pixelFormat() const override;
     // OpenCV's name for the capture API in use ("DSHOW", "MSMF", "V4L2"); empty while closed.
     std::string captureApiName() const;
 

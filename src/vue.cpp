@@ -16,13 +16,13 @@ std::optional<double> optionalFromJson(const nlohmann::json& j, const char* key)
     return j.at(key).get<double>();
 }
 
-// First free name among <sidecar>.unreadable, <sidecar>.unreadable.2, ...
-std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar) {
+// First free name among <sidecar><suffix>, <sidecar><suffix>.2, ...
+std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar, const std::string& suffix) {
     auto candidate = sidecar;
-    candidate += ".unreadable";
+    candidate += suffix;
     for (int n = 2; std::filesystem::exists(candidate); ++n) {
         candidate = sidecar;
-        candidate += ".unreadable." + std::to_string(n);
+        candidate += suffix + "." + std::to_string(n);
     }
     return candidate;
 }
@@ -35,6 +35,9 @@ nlohmann::json CaptureInfo::toJson() const {
         {"exposure_ms", optionalToJson(exposureMs)},
         {"white_balance_kelvin", optionalToJson(whiteBalanceKelvin)},
         {"white_reference", whiteReference.toJson()},
+        {"frame_width", frameWidth},
+        {"frame_height", frameHeight},
+        {"pixel_format", pixelFormat},
     };
 }
 
@@ -44,15 +47,23 @@ CaptureInfo CaptureInfo::fromJson(const nlohmann::json& j) {
     info.exposureMs = optionalFromJson(j, "exposure_ms");
     info.whiteBalanceKelvin = optionalFromJson(j, "white_balance_kelvin");
     if (j.contains("white_reference")) info.whiteReference = WhiteBalance::fromJson(j.at("white_reference"));
+    info.frameWidth = j.value("frame_width", 0);
+    info.frameHeight = j.value("frame_height", 0);
+    info.pixelFormat = j.value("pixel_format", std::string{});
     return info;
 }
 
 Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath,
-                 std::optional<CaptureInfo> captureInfo) {
+                 std::optional<CaptureInfo> captureInfo, std::optional<Calibration> calibration) {
     if (std::filesystem::exists(imagePath)) {
         throw std::runtime_error("Vue::capture: " + imagePath.string() +
                                   " already exists — Vues are immutable-by-path, "
                                   "generate a fresh unique path instead of reusing one");
+    }
+    // Before anything is written: a Vue must never be stored with a
+    // Calibration that doesn't hold for its pixels (ADR 0015).
+    if (calibration) {
+        calibration->requireFitsFrame(original.cols, original.rows, "Vue::capture");
     }
     if (!cv::imwrite(imagePath.string(), original)) {
         throw std::runtime_error("Vue::capture: failed to write " + imagePath.string());
@@ -62,7 +73,8 @@ Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath
     vue.imagePath_ = imagePath;
     vue.original_ = original.clone();
     vue.captureInfo_ = std::move(captureInfo);
-    if (vue.captureInfo_) {
+    vue.calibration_ = std::move(calibration);
+    if (vue.captureInfo_ || vue.calibration_) {
         vue.saveSidecar();
     }
     return vue;
@@ -82,6 +94,10 @@ Vue Vue::load(const std::filesystem::path& imagePath) {
 }
 
 void Vue::addTreatment(std::unique_ptr<Treatment> t) {
+    // Refused before it is saved: render() could never apply it (ADR 0015).
+    if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+        throw std::runtime_error("Vue::addTreatment: " + *why);
+    }
     treatments_.push_back(std::move(t));
     saveSidecar();
 }
@@ -109,16 +125,19 @@ void Vue::saveSidecar() {
     if (captureInfo_) {
         sidecar["capture"] = captureInfo_->toJson();
     }
+    if (calibration_) {
+        sidecar["calibration"] = calibration_->toJson();
+    }
 
     const auto path = sidecarPath();
-    // Never overwrite a sidecar load() could not read: it may still be the
-    // only record of this Vue's treatments and capture settings (ADR 0004 —
-    // no write destroys an earlier file).
-    if (unreadableSidecarOnDisk_) {
+    // Never overwrite a sidecar load() could not read, or dropped part of: it
+    // may still be the only record of this Vue's treatments, capture settings
+    // or Calibration (ADR 0004 — no write destroys an earlier file).
+    if (!setAsideSuffix_.empty()) {
         if (std::filesystem::exists(path)) {
-            std::filesystem::rename(path, unusedAsidePath(path));
+            std::filesystem::rename(path, unusedAsidePath(path, setAsideSuffix_));
         }
-        unreadableSidecarOnDisk_ = false;
+        setAsideSuffix_.clear();
     }
 
     // Write a temp file, then rename it over the sidecar: a crash or full
@@ -146,15 +165,21 @@ void Vue::loadSidecarIfPresent() {
     // stack would render differently from what was saved.
     std::vector<std::unique_ptr<Treatment>> treatments;
     std::optional<CaptureInfo> captureInfo;
+    std::optional<Calibration> calibration;
     try {
         std::ifstream in(path);
         nlohmann::json sidecar;
         in >> sidecar;
 
-        // Sidecars written before ADR 0014 are a bare array of treatments.
+        // Sidecars written before ADR 0014 are a bare array of treatments, and
+        // ones written before ADR 0015 have no "calibration": both load as
+        // uncalibrated Vues.
         const nlohmann::json& entries = sidecar.is_array() ? sidecar : sidecar.at("treatments");
         if (sidecar.is_object() && sidecar.contains("capture")) {
             captureInfo = CaptureInfo::fromJson(sidecar.at("capture"));
+        }
+        if (sidecar.is_object() && sidecar.contains("calibration") && !sidecar.at("calibration").is_null()) {
+            calibration = Calibration::fromJson(sidecar.at("calibration"));
         }
 
         auto& factory = TreatmentFactory::instance();
@@ -165,11 +190,40 @@ void Vue::loadSidecarIfPresent() {
         // Losing the sidecar never loses the photo (ADR 0003): load it bare
         // and report why. The file is left as is; saveSidecar() sets it aside.
         sidecarError_ = path.string() + ": " + e.what();
-        unreadableSidecarOnDisk_ = true;
+        setAsideSuffix_ = ".unreadable";
         return;
     }
-    treatments_ = std::move(treatments);
+
+    // A Calibration or an Échelle measured at another frame size no longer
+    // describes this photo, but it costs only itself (ADR 0003 over ADR
+    // 0015): it is dropped and reported, the rest loads, and the file that
+    // still holds it is set aside on the next save. Dropping an Échelle
+    // removes only its bar, so the other treatments render as saved.
+    std::string dropped;
+    auto drop = [&](const std::string& what, const std::string& why) {
+        dropped += (dropped.empty() ? "" : "; ") + what + " dropped: " + why;
+    };
+    if (calibration) {
+        if (auto why = calibration->frameMismatch(original_.cols, original_.rows)) {
+            drop("calibration", *why);
+            calibration.reset();
+        }
+    }
+    std::vector<std::unique_ptr<Treatment>> usable;
+    for (auto& t : treatments) {
+        if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+            drop(t->type() + " treatment", *why);
+        } else {
+            usable.push_back(std::move(t));
+        }
+    }
+    if (!dropped.empty()) {
+        sidecarError_ = path.string() + ": " + dropped;
+        setAsideSuffix_ = ".mismatched";
+    }
+    treatments_ = std::move(usable);
     captureInfo_ = std::move(captureInfo);
+    calibration_ = std::move(calibration);
 }
 
 } // namespace msapp

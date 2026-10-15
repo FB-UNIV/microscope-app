@@ -1,8 +1,24 @@
 #include "measurement.hpp"
 #include "format_microns.hpp"
+#include "vue.hpp"
 #include <stdexcept>
 
 namespace msapp {
+
+namespace {
+
+Calibration calibrationOf(const Vue& vue) {
+    if (!vue.calibration()) {
+        throw std::invalid_argument("Measurement: " + vue.imagePath().string() +
+                                    " has no Calibration — it was captured without a calibrated Grossissement");
+    }
+    return *vue.calibration();
+}
+
+} // namespace
+
+Measurement::Measurement(cv::Point2d p1, cv::Point2d p2, const Vue& vue)
+    : Measurement(p1, p2, calibrationOf(vue)) {}
 
 Measurement::Measurement(cv::Point2d p1, cv::Point2d p2, Calibration calibration)
     : p1_(p1), p2_(p2), calibration_(std::move(calibration)) {

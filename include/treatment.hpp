@@ -2,6 +2,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 
 namespace msapp {
@@ -24,6 +25,12 @@ public:
     // Apply this treatment to `input`, returning the resulting image.
     // Must not modify `input` in place.
     virtual cv::Mat apply(const cv::Mat& input) const = 0;
+
+    // Why this treatment can't be applied to a width x height image — an
+    // Échelle whose Calibration was measured at another frame size (ADR
+    // 0015); empty when it can. apply() throws in that case, so Vue checks
+    // this first: addTreatment() refuses such a treatment and load() drops it.
+    virtual std::optional<std::string> frameMismatch(int /*width*/, int /*height*/) const { return std::nullopt; }
 
     // Serialize this treatment's parameters (not the image) for the sidecar.
     // The wrapping {"type": ...} envelope is added by the caller (Vue), not

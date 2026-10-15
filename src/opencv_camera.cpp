@@ -26,6 +26,9 @@ void OpenCvCamera::open() {
                                  "(ADR 0013); WinUSB-only Motic models do not (ADR 0011).");
     }
     // Format before size: some drivers only offer the large modes in MJPG.
+    // set()'s return values are not trusted: drivers report success and fall
+    // back to another mode. frameSize() and pixelFormat() read back what was
+    // granted; CaptureStation checks them against the profile (ADR 0015).
     if (!pixelFormat_.empty()) {
         capture_.set(cv::CAP_PROP_FOURCC,
                      cv::VideoWriter::fourcc(pixelFormat_[0], pixelFormat_[1], pixelFormat_[2], pixelFormat_[3]));
@@ -90,6 +93,18 @@ cv::Size OpenCvCamera::frameSize() const {
     if (!capture_.isOpened()) return {};
     return {static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_WIDTH)),
             static_cast<int>(capture_.get(cv::CAP_PROP_FRAME_HEIGHT))};
+}
+
+std::string OpenCvCamera::pixelFormat() const {
+    if (!capture_.isOpened()) return {};
+    const auto code = static_cast<unsigned int>(static_cast<long long>(capture_.get(cv::CAP_PROP_FOURCC)));
+    std::string fourcc;
+    for (int i = 0; i < 4; ++i) {
+        const char c = static_cast<char>((code >> (8 * i)) & 0xFF);
+        if (c < 0x20 || c >= 0x7F) return {};
+        fourcc += c;
+    }
+    return fourcc;
 }
 
 std::string OpenCvCamera::captureApiName() const {
