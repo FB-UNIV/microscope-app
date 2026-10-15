@@ -11,8 +11,11 @@
 #include "test_support.hpp"
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -104,6 +107,42 @@ int main() {
                        .empty() &&
                   vue.treatmentCount() == 2 && vue.treatment(1).type() == "phase_overlay",
               "insert: the new Treatment is taken out again");
+    }
+
+    std::cout << "\n== Export a flattened copy (#28) ==\n";
+    {
+        Vue vue = Vue::capture(frame, dir / "export.png");
+        vue.addTreatment(std::make_unique<LevelsTreatment>(80, 160));
+        const std::string sidecarBefore = [&] {
+            std::ifstream in(vue.sidecarPath(), std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), {});
+        }();
+
+        vue.exportRendered(dir / "copy.png");
+        const cv::Mat copy = cv::imread((dir / "copy.png").string(), cv::IMREAD_UNCHANGED);
+        check(!copy.empty() && cv::norm(copy, vue.render(), cv::NORM_INF) == 0,
+              "a PNG export is the rendered Vue, Treatments applied");
+        check(cv::norm(cv::imread((dir / "export.png").string(), cv::IMREAD_UNCHANGED), frame, cv::NORM_INF) == 0,
+              "the stored photo is untouched");
+        vue.exportRendered(dir / "copy.JPG");
+        vue.exportRendered(dir / "copy.tiff");
+        check(!cv::imread((dir / "copy.JPG").string()).empty() && !cv::imread((dir / "copy.tiff").string()).empty(),
+              "JPEG and TIFF exports are written too");
+        check(!fs::exists(dir / "copy.tmp.png") && !fs::exists(dir / "copy.tmp.JPG"), "no temp file left behind");
+
+        check(!throwsWith<std::invalid_argument>([&] { vue.exportRendered(dir / "export.png"); }).empty() &&
+                  !throwsWith<std::invalid_argument>([&] { vue.exportRendered(dir / "." / "export.png"); }).empty(),
+              "exporting over the Vue's own photo is refused, however the path is spelled");
+        check(!throwsWith<std::invalid_argument>([&] { vue.exportRendered(vue.sidecarPath()); }).empty(),
+              "exporting over its sidecar is refused");
+        check(!throwsWith<std::invalid_argument>([&] { vue.exportRendered(dir / "copy.gif"); }).empty() &&
+                  !fs::exists(dir / "copy.gif"),
+              "an unsupported format is refused, writing nothing");
+        const std::string sidecarAfter = [&] {
+            std::ifstream in(vue.sidecarPath(), std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), {});
+        }();
+        check(sidecarAfter == sidecarBefore, "exporting never rewrites the sidecar");
     }
 
     fs::remove_all(dir);

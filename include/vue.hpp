@@ -95,6 +95,15 @@ public:
     // read from — none of them ever touch the stored original directly.
     cv::Mat render() const;
 
+    // Exports a flattened copy (issue #28): render() written to `target` as
+    // PNG, TIFF or JPEG (by its extension; JPEG at quality 95), through a
+    // temp file so a failed write never leaves half an image. Saving and
+    // exporting stay different actions (ADR 0003): throws
+    // std::invalid_argument, writing nothing, when `target` is this Vue's
+    // own photo or sidecar or has another extension, and std::runtime_error
+    // when the file can't be written.
+    void exportRendered(const std::filesystem::path& target) const;
+
     const std::filesystem::path& imagePath() const { return imagePath_; }
     const cv::Mat& original() const { return original_; }
     std::size_t treatmentCount() const { return treatments_.size(); }

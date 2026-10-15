@@ -8,10 +8,12 @@
 #include "phase_overlay_treatment.hpp"
 #include "qt_image.hpp"
 #include "vickers.hpp"
+#include "wait_cursor.hpp"
 
-#include <QApplication>
 #include <QComboBox>
+#include <QDir>
 #include <QDockWidget>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -21,6 +23,8 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
+#include <QStandardPaths>
+#include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -31,14 +35,6 @@
 namespace msapp {
 
 namespace {
-
-// Restores the normal cursor however the slow step ends.
-struct WaitCursor {
-    WaitCursor() { QApplication::setOverrideCursor(Qt::WaitCursor); }
-    ~WaitCursor() { QApplication::restoreOverrideCursor(); }
-    WaitCursor(const WaitCursor&) = delete;
-    WaitCursor& operator=(const WaitCursor&) = delete;
-};
 
 QString describe(const Treatment& treatment) {
     if (const auto* levels = dynamic_cast<const LevelsTreatment*>(&treatment)) {
@@ -194,11 +190,13 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     phaseLayout->addWidget(phaseMap_);
 
     principale_ = new QPushButton;
+    auto* exportCopy = new QPushButton(tr("Exporter une copie (traitements appliqués)…"));
 
     auto* panel = new QWidget;
     auto* panelLayout = new QVBoxLayout(panel);
     panelLayout->addWidget(info);
     panelLayout->addWidget(principale_);
+    panelLayout->addWidget(exportCopy);
     panelLayout->addWidget(treatmentsBox);
     panelLayout->addWidget(measureBox);
     panelLayout->addWidget(phaseBox);
@@ -236,6 +234,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     connect(calcul, &QPushButton::clicked, this, &VueWindow::analysePhases);
     connect(phaseMap_, &QPushButton::clicked, this, &VueWindow::showPhaseMap);
     connect(principale_, &QPushButton::clicked, this, &VueWindow::flagPrincipale);
+    connect(exportCopy, &QPushButton::clicked, this, &VueWindow::exportCopy);
 
     showSaved();
     refreshTreatments();
@@ -403,6 +402,23 @@ void VueWindow::showPhaseMap() {
             vue_.addTreatment(std::move(overlay));
         }
     });
+}
+
+void VueWindow::exportCopy() {
+    const QString suggested =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation))
+            .filePath(toQString(vue_.imagePath().stem()) + QStringLiteral(".png"));
+    const QString path = QFileDialog::getSaveFileName(this, tr("Exporter une copie de la Vue"), suggested,
+                                                      tr("PNG (*.png);;TIFF (*.tif *.tiff);;JPEG (*.jpg *.jpeg)"));
+    if (path.isEmpty()) return;
+    try {
+        const WaitCursor wait;
+        vue_.exportRendered(toPath(path));
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Export impossible"), QString::fromStdString(e.what()));
+        return;
+    }
+    statusBar()->showMessage(tr("Copie exportée : %1").arg(path), 10000);
 }
 
 void VueWindow::flagPrincipale() {

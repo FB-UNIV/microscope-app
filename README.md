@@ -67,8 +67,8 @@ or `GMP` and `gmp`) are refused with both names. No file means no
 catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
 becomes the cache of what the API serves (ADR 0007).
 
-**Not yet built:** Fiche (PDF) generation (Phase 1d), filing Unsorted Vues
-into an Échantillon, a catalog editor inside the app, and everything in
+**Not yet built:** filing Unsorted Vues into an Échantillon, a catalog
+editor inside the app, and everything in
 ADRs 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2,
 deliberately deferred. No Motic SDK backend is planned: the A5 doesn't need
 one.
@@ -95,7 +95,14 @@ one.
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
   default), and *Analyse de phases* (CALCUL, percentages, histogram with
   the Seuil, the phase map as a Treatment). Measuring is refused on an
-  uncalibrated Vue.
+  uncalibrated Vue. *Exporter une copie* writes the Vue with its
+  Treatments as PNG, TIFF or JPEG; the photo and sidecar are untouched.
+- **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
+  an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
+  Treatments and Échelle, its name and Grossissement, two per row, as few
+  pages as fit (`layoutFiche()`: eight 16:9 photos per page). An
+  Échantillon without a Vue principale gets an empty frame, and the app
+  lists them before writing. Then open the PDF to print it (ADR 0010).
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
   on), *Calibrer un grossissement sur la mire* (click a line of the 20 µm
   mire and the line N periods further, until two readings agree within
@@ -160,8 +167,8 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    capture, then check a Measurement against the mire and Phase analysis
    against an archived result. Confirm the phase-map colours with a
    teacher (#25: the legacy plane order was inferred).
-3. Fiche generation: one PDF sheet per TP with each Échantillon's name,
-   Vue principale, Grossissement and Échelle (ADR 0016).
+3. Print a Fiche on the lab printer and check the Échelle bar against the
+   mire on paper.
 
 Phase-analysis parity always runs (CI included) on three 256×256 crops of
 legacy views in `tests/fixtures/legacy/`. The full-size checks run against
