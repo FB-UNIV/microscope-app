@@ -1,5 +1,6 @@
 #include "vue.hpp"
 #include "json_optional.hpp"
+#include "safe_write.hpp"
 #include "treatment_factory.hpp"
 #include <opencv2/imgcodecs.hpp>
 #include <fstream>
@@ -9,21 +10,8 @@ namespace msapp {
 
 using detail::optionalFromJson;
 using detail::optionalToJson;
-
-namespace {
-
-// First free name among <sidecar><suffix>, <sidecar><suffix>.2, ...
-std::filesystem::path unusedAsidePath(const std::filesystem::path& sidecar, const std::string& suffix) {
-    auto candidate = sidecar;
-    candidate += suffix;
-    for (int n = 2; std::filesystem::exists(candidate); ++n) {
-        candidate = sidecar;
-        candidate += suffix + "." + std::to_string(n);
-    }
-    return candidate;
-}
-
-} // namespace
+using detail::unusedAsidePath;
+using detail::writeFileAtomically;
 
 nlohmann::json CaptureInfo::toJson() const {
     return {
@@ -136,19 +124,9 @@ void Vue::saveSidecar() {
         setAsideSuffix_.clear();
     }
 
-    // Write a temp file, then rename it over the sidecar: a crash or full
-    // disk mid-write leaves the previous sidecar, never a truncated one.
-    auto temp = path;
-    temp += ".tmp";
-    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-    out << sidecar.dump(2);
-    out.close();
-    if (out.fail()) {
-        std::error_code ignored;
-        std::filesystem::remove(temp, ignored);
-        throw std::runtime_error("Vue::saveSidecar: failed to write " + temp.string());
-    }
-    std::filesystem::rename(temp, path);
+    // A crash or full disk mid-write leaves the previous sidecar, never a
+    // truncated one.
+    writeFileAtomically(path, sidecar.dump(2), "Vue::saveSidecar");
 }
 
 void Vue::loadSidecarIfPresent() {

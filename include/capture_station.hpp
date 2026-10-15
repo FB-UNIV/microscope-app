@@ -59,7 +59,8 @@ public:
     Vue capture(const std::filesystem::path& imagePath, const std::optional<Calibration>& calibration = std::nullopt);
 
     // Grabs one raw frame of a blank field (lamp on, no specimen) and stores
-    // the gains that neutralise it. Persist config() afterwards to keep them.
+    // the gains that neutralise it. Persist config() afterwards to keep them
+    // (WorkstationConfig::camera, saveWorkstationConfig).
     WhiteBalance calibrateWhiteReference();
 
     const CameraConfig& config() const { return config_; }

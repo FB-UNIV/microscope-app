@@ -15,7 +15,7 @@ namespace msapp {
 // One workstation's camera profile — chosen by configuration, not compiled
 // in, so the same build can run a lab PC (Moticam A5 via "opencv", ADR
 // 0013), a laptop webcam demo, or a no-camera session (file replay).
-// Saved as JSON in the workstation config. Exposure and colour temperature
+// Saved as JSON in the WorkstationConfig. Exposure and colour temperature
 // are re-applied by CaptureStation on every open: the A5 keeps whatever the
 // last program set (docs/hardware/camera-probe.md).
 struct CameraConfig {

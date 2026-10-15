@@ -28,6 +28,8 @@ add_library(microscope_core
     src/camera_factory.cpp
     src/white_reference.cpp
     src/capture_station.cpp
+    src/safe_write.cpp
+    src/workstation_config.cpp
 )
 target_include_directories(microscope_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(microscope_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
@@ -46,7 +48,8 @@ set(MSAPP_LEGACY_DATA_DIR "" CACHE PATH "Folder with legacy Metal view TIFFs (op
 
 enable_testing()
 foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera
-                  test_white_reference test_capture_station test_treatment_registration)
+                  test_white_reference test_capture_station test_treatment_registration
+                  test_workstation_config)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE microscope_core)
     target_compile_definitions(${test_name} PRIVATE MSAPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

@@ -35,6 +35,19 @@ captured with, tied to the frame size it was measured at (ADR 0015), and
 every calibrated capture gets its Échelle automatically (ADR 0017). Nothing
 is migrated from the legacy app (ADR 0018).
 
+Each workstation keeps its `WorkstationConfig` — the camera profile (capture
+API, frame size, pixel format, exposure, colour temperature), the White
+reference, and one Calibration per Grossissement with the frame size it was
+measured at — in `workstation.json` under the per-user *local* app data
+folder (`defaultWorkstationConfigPath()`: `%LOCALAPPDATA%\microscope-app\`
+on Windows, so it never roams to another lab PC; `$XDG_CONFIG_HOME` or
+`~/.config` elsewhere). First launch loads the Moticam A5 profile with no
+Calibrations. Saves are atomic, and a file that can't be read loads as
+defaults with an error instead of blocking the app; the next save keeps it
+aside as `workstation.json.unreadable` (ADR 0004).
+`calibrationForFrame(grossissement, width, height)` refuses a Calibration
+measured at another frame size than the camera delivers (ADR 0015).
+
 **Not yet built:** the Qt UI itself, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
 deferred. No Motic SDK backend is planned: the A5 doesn't need one.
@@ -89,16 +102,20 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
 2. Fill the Qt `MainWindow` (`app/`, empty so far): live preview + capture button, driving a
-   `CaptureStation` built from `moticamA5Profile()` (re-applies the camera
-   profile on every open, bakes in the White reference — ADR 0014), plus a
-   setup action to calibrate the White reference from a blank field. Warn
+   `CaptureStation` built from the camera profile of
+   `loadWorkstationConfig(defaultWorkstationConfigPath())` (re-applies the
+   camera profile on every open, bakes in the White reference — ADR 0014;
+   show the load `error` if there is one), plus a setup action to calibrate
+   the White reference from a blank field and save it with
+   `saveWorkstationConfig()`. Warn
    when `open()`'s `ProfileReport::allApplied()` is false — above all a
    frame size or pixel format the camera didn't grant (ADR 0015) — and pass
-   the selected Grossissement's Calibration to `capture()`; take
+   `calibrationForFrame()` of the selected Grossissement to `capture()`; take
    Measurements with `Measurement(p1, p2, vue)`.
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
    until two readings agree within 0.25 %), recording the frame size it
-   measured at — a Calibration only holds for that size (ADR 0015).
+   measured at — a Calibration only holds for that size (ADR 0015) — and
+   storing it with `WorkstationConfig::setCalibration()`.
 4. Fiche generation: one PDF sheet per TP with each Échantillon's name,
    Vue principale, Grossissement and Échelle (ADR 0016).
 
