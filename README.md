@@ -19,7 +19,8 @@ This is the first slice: the `Treatment` pipeline (ADR 0002), `Levels` and
 JSON sidecar, non-destructive). It started as pure C++ + OpenCV with no
 Qt and no camera — deliberately, so the imaging math and the storage model
 could be built and verified without needing a Windows machine, Qt, or a
-Moticam attached. Camera capture came next (below); Qt is still to come.
+Moticam attached. Camera capture came next (below); the Qt 6 app in
+`app/` is scaffolded, with an empty `MainWindow` for now.
 
 Also built since: `CaptureStation` with the measured Moticam A5 camera
 profile and the per-microscope White reference (ADR 0014); the
@@ -34,13 +35,16 @@ captured with, tied to the frame size it was measured at (ADR 0015), and
 every calibrated capture gets its Échelle automatically (ADR 0017). Nothing
 is migrated from the legacy app (ADR 0018).
 
-**Not yet built:** Qt UI, Fiche (PDF) generation, and everything in ADRs
+**Not yet built:** the Qt UI itself, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
 deferred. No Motic SDK backend is planned: the A5 doesn't need one.
 
 ## Building
 
-Requires CMake, a C++17 compiler, OpenCV, and nlohmann-json.
+Requires CMake, a C++17 compiler, OpenCV, nlohmann-json, and Qt 6.4+
+(Widgets) for the app. Without Qt, configure with `-DMSAPP_BUILD_APP=OFF`
+to build only the core, its tests and `camera_probe`: the core never links
+Qt.
 
 ```sh
 mkdir build && cd build
@@ -48,6 +52,12 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 make
 ./test_pipeline
 ```
+
+`ctest` also runs `microscope_app --smoke-test` on Qt's offscreen platform:
+it shows the `MainWindow` and quits, so it needs no display. CI publishes
+a ready-to-run Windows bundle of the app (`microscope_app-windows`: exe,
+Qt, OpenCV and MSVC runtime DLLs), built with the Qt version pinned in
+`.github/workflows/ci.yml`.
 
 `test_pipeline` synthesizes a low-contrast test image (standing in for a
 real capture until real hardware is available), runs it through Levels +
@@ -61,6 +71,7 @@ their full paths), never in the source tree.
 ```
 include/            Public headers for the core lib
 src/                 Implementation
+app/                 Qt 6 desktop app (MainWindow) — the only code that links Qt
 tests/               Test harness (no test framework dependency — plain asserts + PASS/FAIL output)
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
@@ -77,7 +88,7 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    back; record the working capture API, size and pixel format (ADR 0013).
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
-2. Qt `MainWindow`: live preview + capture button, driving a
+2. Fill the Qt `MainWindow` (`app/`, empty so far): live preview + capture button, driving a
    `CaptureStation` built from `moticamA5Profile()` (re-applies the camera
    profile on every open, bakes in the White reference — ADR 0014), plus a
    setup action to calibrate the White reference from a blank field. Warn

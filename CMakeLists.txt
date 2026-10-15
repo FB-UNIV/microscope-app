@@ -62,6 +62,9 @@ endforeach()
 add_executable(camera_probe tools/camera_probe.cpp)
 target_link_libraries(camera_probe PRIVATE microscope_core)
 
-# NOTE: still no Qt here. Capture sits behind ICamera (file + OpenCV
-# backends); the Moticam A5 is UVC, so the OpenCV backend is the
-# production path (ADR 0013). The Qt MainWindow is the next slice (ADR 0009).
+# The Qt 6 app (app/). Qt stays out of microscope_core: turn this off to
+# build and test the core on a machine without Qt.
+option(MSAPP_BUILD_APP "Build the Qt 6 desktop app (needs Qt 6 Widgets)" ON)
+if(MSAPP_BUILD_APP)
+    add_subdirectory(app)
+endif()
