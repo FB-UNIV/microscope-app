@@ -15,10 +15,16 @@ qt_add_executable(microscope_app
     main.cpp
     main_window.cpp
     main_window.hpp
+    location_picker.cpp
+    location_picker.hpp
+    mire_dialog.cpp
+    mire_dialog.hpp
     preview_widget.cpp
     preview_widget.hpp
     preview_worker.cpp
     preview_worker.hpp
+    qt_image.cpp
+    qt_image.hpp
 )
 target_link_libraries(microscope_app PRIVATE microscope_core Qt6::Widgets)
 set_target_properties(microscope_app PROPERTIES WIN32_EXECUTABLE ON)

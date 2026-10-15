@@ -1,13 +1,11 @@
 #include "preview_worker.hpp"
 
 #include "capture_station.hpp"
+#include "qt_image.hpp"
 
 #include <QElapsedTimer>
 #include <QThread>
 
-#include <opencv2/imgproc.hpp>
-
-#include <algorithm>
 #include <exception>
 #include <utility>
 
@@ -17,7 +15,7 @@ namespace {
 
 // Largest frame sent to the window: enough for a full-HD screen, and a 4K
 // frame shrunk here costs far less than copying and painting it whole.
-const cv::Size kMaxPreviewSize(1920, 1080);
+const QSize kMaxPreviewSize(1920, 1080);
 
 QString sizeText(int width, int height) {
     return QStringLiteral("%1x%2").arg(width).arg(height);
@@ -64,24 +62,10 @@ QStringList profileWarnings(const CameraConfig& config, const ProfileReport& rep
     return warnings;
 }
 
-// Deep copy: the QImage outlives the grabbed cv::Mat.
-QImage toImage(const cv::Mat& frame) {
-    cv::Mat shown = frame;
-    if (frame.cols > kMaxPreviewSize.width || frame.rows > kMaxPreviewSize.height) {
-        const double scale = std::min(static_cast<double>(kMaxPreviewSize.width) / frame.cols,
-                                      static_cast<double>(kMaxPreviewSize.height) / frame.rows);
-        cv::resize(frame, shown, cv::Size(), scale, scale, cv::INTER_AREA);
-    }
-    if (shown.channels() == 4) {
-        cv::cvtColor(shown, shown, cv::COLOR_BGRA2BGR);
-    }
-    const QImage::Format format = shown.channels() == 1 ? QImage::Format_Grayscale8 : QImage::Format_BGR888;
-    return QImage(shown.data, shown.cols, shown.rows, static_cast<qsizetype>(shown.step), format).copy();
-}
-
 } // namespace
 
-PreviewWorker::PreviewWorker(CameraConfig config) : config_(std::move(config)) {}
+PreviewWorker::PreviewWorker(CameraConfig config, std::shared_ptr<CameraJobs> jobs)
+    : config_(std::move(config)), jobs_(std::move(jobs)) {}
 
 void PreviewWorker::run() {
     QThread* thread = QThread::currentThread();
@@ -99,10 +83,17 @@ void PreviewWorker::run() {
         clock.start();
         int grabbed = 0;
         while (!thread->isInterruptionRequested()) {
+            for (auto& job : jobs_->take()) {
+                try {
+                    job(station);
+                } catch (const std::exception& e) {
+                    emit jobFailed(QString::fromStdString(e.what()));
+                }
+            }
             const cv::Mat frame = station.grabPreview();
             ++grabbed;
             if (!framePending_->exchange(true)) {
-                emit frameReady(toImage(frame));
+                emit frameReady(toQImage(frame, kMaxPreviewSize), QSize(frame.cols, frame.rows));
             }
             if (clock.elapsed() >= 1000) {
                 emit fpsMeasured(grabbed * 1000.0 / static_cast<double>(clock.restart()));
