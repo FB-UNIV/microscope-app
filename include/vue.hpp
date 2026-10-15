@@ -76,6 +76,20 @@ public:
     // (an Échelle measured at another one, ADR 0015).
     void addTreatment(std::unique_ptr<Treatment> t);
 
+    // Editing the pipeline (ADR 0002: re-orderable, undo-able), e.g. Levels
+    // set again, or before the Échelle so the bar keeps its contrast. Each
+    // persists the sidecar like addTreatment(), in one write; when that
+    // write fails, the pipeline is left as it was and the error is rethrown.
+    // insertTreatment() and replaceTreatment() refuse a mismatched treatment
+    // like addTreatment(); all three throw std::out_of_range for an index
+    // past the pipeline (insert accepts treatmentCount(): append).
+    void insertTreatment(std::size_t index, std::unique_ptr<Treatment> t);
+    void replaceTreatment(std::size_t index, std::unique_ptr<Treatment> t);
+    void removeTreatment(std::size_t index);
+
+    // The index-th treatment, in apply order. Throws std::out_of_range.
+    const Treatment& treatment(std::size_t index) const { return *treatments_.at(index); }
+
     // Renders the untouched original with every treatment applied in
     // order. This is what Measurement, export, and Fiche generation all
     // read from — none of them ever touch the stored original directly.
