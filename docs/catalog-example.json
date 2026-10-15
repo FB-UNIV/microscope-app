@@ -1,0 +1,35 @@
+{
+  "departments": [
+    {
+      "name": "GMP",
+      "tps": [
+        {
+          "name": "TP 1: Aciers",
+          "instructions": "Observez chaque acier au grossissement x40 puis x100. Estimez la teneur en carbone à partir du pourcentage de perlite.",
+          "echantillons": [
+            {"name": "Ac1: XC10"},
+            {"name": "Ac2: XC38"},
+            {"name": "Ac3: XC80"},
+            {"name": "Ac4: XC150"},
+            {"name": "Inconnu"}
+          ]
+        },
+        {
+          "name": "TP 2: Fontes",
+          "instructions": "Identifiez la forme du graphite de chaque fonte.",
+          "echantillons": ["F1", "F2", "F3"]
+        }
+      ]
+    },
+    {
+      "name": "CHIMIE",
+      "tps": [
+        {
+          "name": "TP 3: Alliages cuivreux",
+          "instructions": "",
+          "echantillons": ["Laiton", "Bronze"]
+        }
+      ]
+    }
+  ]
+}
