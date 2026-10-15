@@ -6,6 +6,7 @@
 #include "preview_widget.hpp"
 #include "preview_worker.hpp"
 #include "qt_image.hpp"
+#include "vue_window.hpp"
 
 #include <QAction>
 #include <QComboBox>
@@ -158,6 +159,8 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     vuesTitle_ = new QLabel;
     vueList_ = new QListWidget;
     vueList_->setIconSize(kThumbnailSize);
+    vueList_->setToolTip(tr("Double-cliquez une Vue pour l'ouvrir : traitements, mesures, analyse de phases."));
+    auto* open = new QPushButton(tr("Ouvrir la Vue"));
     auto* principale = new QPushButton(tr("★ Choisir comme Vue principale"));
     principale->setToolTip(tr("La Vue principale de l'Échantillon est celle de la Fiche du TP."));
     auto* side = new QWidget;
@@ -165,7 +168,10 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     sideLayout->addWidget(instructions_);
     sideLayout->addWidget(vuesTitle_);
     sideLayout->addWidget(vueList_, 1);
-    sideLayout->addWidget(principale);
+    auto* vueButtons = new QHBoxLayout;
+    vueButtons->addWidget(open);
+    vueButtons->addWidget(principale);
+    sideLayout->addLayout(vueButtons);
     auto* dock = new QDockWidget(tr("TP et Vues"));
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setWidget(side);
@@ -189,6 +195,8 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     connect(reconnect, &QAction::triggered, this, &MainWindow::startCamera);
     connect(captureButton_, &QPushButton::clicked, this, &MainWindow::capture);
     connect(principale, &QPushButton::clicked, this, &MainWindow::flagPrincipale);
+    connect(open, &QPushButton::clicked, this, &MainWindow::openVue);
+    connect(vueList_, &QListWidget::itemActivated, this, &MainWindow::openVue);
     connect(grossissement_, &QComboBox::currentTextChanged, this, &MainWindow::refreshCaptureState);
     connect(picker_, &LocationPicker::locationChanged, this, [this] {
         refreshVues();
@@ -457,6 +465,20 @@ void MainWindow::flagPrincipale() {
         return;
     }
     refreshVues();
+}
+
+void MainWindow::openVue() {
+    const QListWidgetItem* item = vueList_->currentItem();
+    const auto where = location();
+    if (item == nullptr || !where) return;
+    try {
+        Vue vue = Vue::load(toPath(item->data(kPathRole).toString()));
+        auto* window = new VueWindow(std::move(vue), store_, *where, this);  // a window of its own
+        connect(window, &VueWindow::principaleChanged, this, &MainWindow::refreshVues);
+        window->show();
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Vue illisible"), QString::fromStdString(e.what()));
+    }
 }
 
 void MainWindow::measureWhiteReference() {

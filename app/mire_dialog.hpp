@@ -5,20 +5,20 @@
 #include <QDialog>
 #include <QImage>
 #include <QPointF>
+#include <QSize>
 #include <QStringList>
 
 #include <optional>
 
 class QComboBox;
-class QGraphicsPixmapItem;
-class QGraphicsScene;
-class QGraphicsView;
 class QLabel;
 class QListWidget;
 class QPushButton;
 class QSpinBox;
 
 namespace msapp {
+
+class ImageView;
 
 // Calibration wizard against the 20 µm mire (issue #22): on a full-size
 // still of the mire, the operator clicks a line and the line N periods
@@ -43,29 +43,21 @@ public:
 signals:
     void stillRequested();
 
-protected:
-    bool eventFilter(QObject* watched, QEvent* event) override;
-
 private:
     void restart();  // new readings: new still, new objective
     void click(QPointF point);
     void refreshStatus();
-    void clearMarks();
 
     QComboBox* grossissement_;
     QSpinBox* periods_;
-    QGraphicsScene* scene_;
-    QGraphicsView* view_;
-    QGraphicsPixmapItem* still_ = nullptr;
+    ImageView* view_;
     QListWidget* readingsList_;
     QLabel* status_;
-    QPushButton* newStill_;
     QPushButton* save_;
 
     QSize frameSize_;
     std::optional<MireCalibration> mire_;
     std::optional<QPointF> firstClick_;
-    QPoint pressPosition_;
     std::optional<Calibration> result_;
 };
 

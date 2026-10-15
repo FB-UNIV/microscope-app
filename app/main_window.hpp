@@ -75,6 +75,7 @@ private:
     void capture();
     void captured(int generation, const std::filesystem::path& vue, const QString& error);
     void flagPrincipale();
+    void openVue();
     void measureWhiteReference();
     void calibrateGrossissement();
     void requestStill(QPointer<MireDialog> dialog);

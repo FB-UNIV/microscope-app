@@ -1,24 +1,17 @@
 #include "mire_dialog.hpp"
 
+#include "image_view.hpp"
+
 #include <QComboBox>
-#include <QEvent>
 #include <QFormLayout>
-#include <QGraphicsPixmapItem>
-#include <QGraphicsScene>
-#include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QMouseEvent>
-#include <QPen>
-#include <QPixmap>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
-#include <QWheelEvent>
 
-#include <algorithm>
 #include <exception>
 
 namespace msapp {
@@ -27,13 +20,6 @@ namespace {
 
 QString percent(double fraction) {
     return QString::number(fraction * 100.0, 'f', 2) + QStringLiteral(" %");
-}
-
-QPen markPen() {
-    QPen pen(Qt::red);
-    pen.setCosmetic(true);  // same width on screen at any zoom
-    pen.setWidth(2);
-    return pen;
 }
 
 } // namespace
@@ -51,18 +37,11 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     periods_->setValue(10);
     periods_->setSuffix(tr(" périodes"));
 
-    scene_ = new QGraphicsScene(this);
-    view_ = new QGraphicsView(scene_);
-    view_->setDragMode(QGraphicsView::ScrollHandDrag);
-    view_->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
-    view_->setRenderHint(QPainter::SmoothPixmapTransform);
-    view_->setBackgroundBrush(Qt::black);
-    view_->viewport()->installEventFilter(this);
-
+    view_ = new ImageView;
     readingsList_ = new QListWidget;
     status_ = new QLabel;
     status_->setWordWrap(true);
-    newStill_ = new QPushButton(tr("Nouvelle image de la mire"));
+    auto* newStill = new QPushButton(tr("Nouvelle image de la mire"));
     save_ = new QPushButton(tr("Enregistrer la Calibration"));
     save_->setEnabled(false);
     auto* cancel = new QPushButton(tr("Annuler"));
@@ -84,7 +63,7 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     sideLayout->addWidget(new QLabel(tr("Lectures (px/µm)")));
     sideLayout->addWidget(readingsList_, 1);
     sideLayout->addWidget(status_);
-    sideLayout->addWidget(newStill_);
+    sideLayout->addWidget(newStill);
     sideLayout->addWidget(save_);
     sideLayout->addWidget(cancel);
 
@@ -92,7 +71,8 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     layout->addWidget(view_, 1);
     layout->addWidget(side);
 
-    connect(newStill_, &QPushButton::clicked, this, [this] {
+    connect(view_, &ImageView::clicked, this, &MireDialog::click);
+    connect(newStill, &QPushButton::clicked, this, [this] {
         status_->setText(tr("Prise d'une image…"));
         emit stillRequested();
     });
@@ -110,14 +90,7 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
 }
 
 void MireDialog::setStill(const QImage& frame) {
-    clearMarks();
-    if (still_ == nullptr) {
-        still_ = scene_->addPixmap(QPixmap::fromImage(frame));
-    } else {
-        still_->setPixmap(QPixmap::fromImage(frame));
-    }
-    scene_->setSceneRect(still_->boundingRect());
-    view_->fitInView(still_, Qt::KeepAspectRatio);
+    view_->setImage(frame);
     frameSize_ = frame.size();
     restart();
 }
@@ -127,7 +100,7 @@ void MireDialog::stillFailed(const QString& message) {
 }
 
 void MireDialog::restart() {
-    clearMarks();
+    view_->clearMarks();
     firstClick_.reset();
     readingsList_->clear();
     mire_.reset();
@@ -138,25 +111,15 @@ void MireDialog::restart() {
     refreshStatus();
 }
 
-void MireDialog::clearMarks() {
-    for (QGraphicsItem* item : scene_->items()) {
-        if (item != still_) {
-            scene_->removeItem(item);
-            delete item;
-        }
-    }
-}
-
 void MireDialog::click(QPointF point) {
-    if (!mire_ || still_ == nullptr || !still_->boundingRect().contains(point)) return;
-    const qreal radius = std::max<qreal>(4.0, frameSize_.width() / 500.0);
-    scene_->addEllipse(point.x() - radius, point.y() - radius, 2 * radius, 2 * radius, markPen());
+    if (!mire_) return;
+    view_->addPoint(point);
     if (!firstClick_) {
         firstClick_ = point;
         refreshStatus();
         return;
     }
-    scene_->addLine(QLineF(*firstClick_, point), markPen());
+    view_->addLine(*firstClick_, point);
     try {
         const double pixelsPerMicron =
             mire_->addReading({firstClick_->x(), firstClick_->y()}, {point.x(), point.y()}, periods_->value());
@@ -197,29 +160,6 @@ void MireDialog::refreshStatus() {
         status_->setText(tr("Écart de %1 avec la lecture précédente, plus de 0,25 % : mesurez encore.")
                              .arg(percent(*difference)));
     }
-}
-
-bool MireDialog::eventFilter(QObject* watched, QEvent* event) {
-    if (watched == view_->viewport()) {
-        if (event->type() == QEvent::Wheel) {
-            const auto* wheel = static_cast<QWheelEvent*>(event);
-            const double factor = wheel->angleDelta().y() > 0 ? 1.25 : 0.8;
-            view_->scale(factor, factor);
-            return true;
-        }
-        if (event->type() == QEvent::MouseButtonPress) {
-            const auto* mouse = static_cast<QMouseEvent*>(event);
-            if (mouse->button() == Qt::LeftButton) pressPosition_ = mouse->position().toPoint();
-        } else if (event->type() == QEvent::MouseButtonRelease) {
-            const auto* mouse = static_cast<QMouseEvent*>(event);
-            const QPoint position = mouse->position().toPoint();
-            // A click, not the end of a drag that panned the view.
-            if (mouse->button() == Qt::LeftButton && (position - pressPosition_).manhattanLength() < 4) {
-                click(view_->mapToScene(position));
-            }
-        }
-    }
-    return QDialog::eventFilter(watched, event);
 }
 
 } // namespace msapp
