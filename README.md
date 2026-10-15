@@ -20,7 +20,7 @@ JSON sidecar, non-destructive). It started as pure C++ + OpenCV with no
 Qt and no camera — deliberately, so the imaging math and the storage model
 could be built and verified without needing a Windows machine, Qt, or a
 Moticam attached. Camera capture came next (below); the Qt 6 app in
-`app/` is scaffolded, with an empty `MainWindow` for now.
+`app/` now shows a live camera preview (no capture button yet).
 
 Also built since: `CaptureStation` with the measured Moticam A5 camera
 profile and the per-microscope White reference (ADR 0014); the
@@ -67,7 +67,18 @@ or `GMP` and `gmp`) are refused with both names. No file means no
 catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
 becomes the cache of what the API serves (ADR 0007).
 
-**Not yet built:** the Qt UI itself, Fiche (PDF) generation, and everything in ADRs
+`microscope_app` previews the workstation's camera through a
+`CaptureStation` on a worker thread, so the profile is re-applied and the
+White reference baked in exactly as a capture would see it. A banner names
+every setting the camera did not grant (exposure, colour temperature, frame
+size, pixel format), and a camera held by MotiConnect gets a message plus
+a *Reconnecter la caméra* button (F5). For a demo PC, these options
+override the config for one run without changing it: `--device N` (e.g. a
+laptop whose own webcam is 0), `--api dshow|msmf|auto`, `--size WxH`
+(`0x0` = device default), and `--replay IMAGE` (repeatable) to preview image
+files with no camera at all.
+
+**Not yet built:** the rest of the Qt UI (capture, Calibration wizard, TP/Échantillon picker), Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
 deferred. No Motic SDK backend is planned: the A5 doesn't need one.
 
@@ -120,17 +131,12 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    back; record the working capture API, size and pixel format (ADR 0013).
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
-2. Fill the Qt `MainWindow` (`app/`, empty so far): live preview + capture button, driving a
-   `CaptureStation` built from the camera profile of
-   `loadWorkstationConfig(defaultWorkstationConfigPath())` (re-applies the
-   camera profile on every open, bakes in the White reference — ADR 0014;
-   show the load `error` if there is one), plus a setup action to calibrate
-   the White reference from a blank field and save it with
-   `saveWorkstationConfig()`. Warn
-   when `open()`'s `ProfileReport::allApplied()` is false — above all a
-   frame size or pixel format the camera didn't grant (ADR 0015) — and pass
-   `calibrationForFrame()` of the selected Grossissement to `capture()`; take
-   Measurements with `Measurement(p1, p2, vue)`.
+2. Finish the Qt `MainWindow` (`app/`; the live preview is done): a capture
+   button once Vues have unique paths (#18), passing
+   `calibrationForFrame()` of the selected Grossissement to `capture()`; a
+   setup action to calibrate the White reference from a blank field and save
+   it with `saveWorkstationConfig()`; Measurements with
+   `Measurement(p1, p2, vue)`.
 3. Calibration wizard UI against the 20 µm mire. `MireCalibration` already
    does the maths: each pair of clicks N periods apart is one px/µm
    reading, readings repeat until the newest two agree within 0.25 % (the
