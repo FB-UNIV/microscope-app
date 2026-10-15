@@ -124,7 +124,7 @@ bool WorkstationConfig::removeCalibration(const std::string& grossissement) {
 nlohmann::json WorkstationConfig::toJson() const {
     nlohmann::json calibrationsJson = nlohmann::json::array();
     for (const auto& c : calibrations) calibrationsJson.push_back(c.toJson());
-    return {{"camera", camera.toJson()}, {"calibrations", calibrationsJson}};
+    return {{"camera", camera.toJson()}, {"calibrations", calibrationsJson}, {"vue_root", vueRoot.u8string()}};
 }
 
 WorkstationConfig WorkstationConfig::fromJson(const nlohmann::json& j) {
@@ -143,6 +143,9 @@ WorkstationConfig WorkstationConfig::fromJson(const nlohmann::json& j) {
             throw std::invalid_argument("WorkstationConfig::fromJson: \"calibrations\" must be an array");
         }
         for (const auto& entry : entries) config.calibrations.push_back(Calibration::fromJson(entry));
+    }
+    if (j.contains("vue_root")) {
+        config.vueRoot = std::filesystem::u8path(j.at("vue_root").get<std::string>());
     }
     requireValidCalibrations(config.calibrations, "WorkstationConfig::fromJson");
     return config;

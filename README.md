@@ -48,6 +48,13 @@ aside as `workstation.json.unreadable` (ADR 0004).
 `calibrationForFrame(grossissement, width, height)` refuses a Calibration
 measured at another frame size than the camera delivers (ADR 0015).
 
+`VueStore` files every capture under a new, never-reused path:
+`<root>/<Department>/<TP>/<Échantillon>/<UTC time>_<random>.tiff`, or
+`<root>/Unsorted/` before any TP exists (ADR 0008). Names are made safe as
+Windows folder names (`TP 1: Aciers` → `TP 1_ Aciers`). `listVues()` lists
+an Échantillon's Vues in capture order. The root is the workstation
+config's `vue_root`, by default `vues` beside the config file.
+
 **Not yet built:** the Qt UI itself, Fiche (PDF) generation, and everything in ADRs
 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
 deferred. No Motic SDK backend is planned: the A5 doesn't need one.
