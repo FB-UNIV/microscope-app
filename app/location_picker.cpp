@@ -84,6 +84,20 @@ void LocationPicker::setCatalog(const Catalog& catalog) {
     emit locationChanged();
 }
 
+void LocationPicker::setLocation(const VueLocation& location) {
+    // Each pick refills the combos after it.
+    const auto pick = [](QComboBox* combo, const std::string& name) {
+        const int index = combo->findText(QString::fromStdString(name));
+        if (index >= 0) combo->setCurrentIndex(index);
+    };
+    filling_ = true;
+    pick(department_, location.department);
+    pick(tp_, location.tp);
+    pick(echantillon_, location.echantillon);
+    filling_ = false;
+    emit locationChanged();
+}
+
 void LocationPicker::fillTps() {
     const Department* department = catalog_.department(department_->currentText().toStdString());
     refill(tp_, department ? department->tps : std::vector<Tp>{}, tp_->currentText());

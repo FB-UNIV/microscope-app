@@ -56,7 +56,13 @@ an Échantillon's Vues in capture order. The root is the workstation
 config's `vue_root`, by default `vues` beside the config file. Each
 Échantillon's Vue principale — the one its TP's Fiche shows (ADR 0016) —
 is flagged with `setPrincipale()`, one atomic `vue-principale.json` in its
-folder, so two Vues are never flagged at once.
+folder, so two Vues are never flagged at once. `fileVue()` files a Vue into
+an Échantillon — an Unsorted one once its TP exists (ADR 0008), or one
+captured under the wrong Échantillon: the image moves with its sidecar and
+any set-aside sidecar, keeping its capture-time name unless that name is
+taken there, and never over another file (ADR 0004). The sidecar moves
+first and the image last; a failed move puts back what had moved. A Vue
+principale filed away is unflagged in its old Échantillon.
 
 The `Catalog` of Departments → TPs (with the instructions students see) →
 Échantillons is `catalog.json`, beside the workstation config. In Phase 1 a
@@ -67,8 +73,7 @@ or `GMP` and `gmp`) are refused with both names. No file means no
 catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
 becomes the cache of what the API serves (ADR 0007).
 
-**Not yet built:** filing Unsorted Vues into an Échantillon, a catalog
-editor inside the app, and everything in
+**Not yet built:** a catalog editor inside the app, and everything in
 ADRs 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2,
 deliberately deferred. No Motic SDK backend is planned: the A5 doesn't need
 one.
@@ -97,6 +102,12 @@ one.
   the Seuil, the phase map as a Treatment). Measuring is refused on an
   uncalibrated Vue. *Exporter une copie* writes the Vue with its
   Treatments as PNG, TIFF or JPEG; the photo and sidecar are untouched.
+- **Filing Vues.** *Classer la Vue…* moves the selected Vue, with its
+  Treatments, into the Échantillon picked in a small *Département › TP ›
+  Échantillon* dialog. Once a catalog exists, Vues captured before it
+  (Unsorted, ADR 0008) are listed with *Vues non classées (N)* above the
+  list, until every one is filed. A Vue open in its own window must be
+  closed first.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
   an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
   Treatments and Échelle, its name and Grossissement, two per row, as few

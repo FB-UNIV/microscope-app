@@ -39,6 +39,8 @@ class VueWindow : public QMainWindow {
 public:
     VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* parent = nullptr);
 
+    const std::filesystem::path& vuePath() const { return vue_.imagePath(); }
+
 signals:
     void principaleChanged();
 
