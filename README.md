@@ -131,10 +131,12 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    frame size or pixel format the camera didn't grant (ADR 0015) — and pass
    `calibrationForFrame()` of the selected Grossissement to `capture()`; take
    Measurements with `Measurement(p1, p2, vue)`.
-3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
-   until two readings agree within 0.25 %), recording the frame size it
-   measured at — a Calibration only holds for that size (ADR 0015) — and
-   storing it with `WorkstationConfig::setCalibration()`.
+3. Calibration wizard UI against the 20 µm mire. `MireCalibration` already
+   does the maths: each pair of clicks N periods apart is one px/µm
+   reading, readings repeat until the newest two agree within 0.25 % (the
+   legacy procedure), and `result()` is their mean with the frame size it
+   was measured at (ADR 0015), to store with
+   `WorkstationConfig::setCalibration()`.
 4. Fiche generation: one PDF sheet per TP with each Échantillon's name,
    Vue principale, Grossissement and Échelle (ADR 0016).
 
