@@ -9,6 +9,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
 
@@ -49,6 +50,12 @@ cv::Mat synthesizeTestSample() {
 std::string readFile(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+std::set<std::string> entryNames(const fs::path& dir) {
+    std::set<std::string> names;
+    for (const auto& entry : fs::directory_iterator(dir)) names.insert(entry.path().filename().string());
+    return names;
 }
 
 } // namespace
@@ -103,12 +110,12 @@ int main() {
 
     std::cout << "\n== Full pipeline: capture -> treat -> render -> save -> reload -> re-render ==\n";
     {
-        fs::path outDir = "tests/output";
+        const std::set<std::string> workingDirBefore = entryNames(fs::current_path());
+        // Cleared at the start, kept afterwards so the PNGs can be inspected.
+        const fs::path outDir = fs::temp_directory_path() / "msapp_pipeline_test";
+        fs::remove_all(outDir);
         fs::create_directories(outDir);
         fs::path imagePath = outDir / "vue_001.tiff";
-        fs::path sidecarPath = imagePath.string() + ".json";
-        if (fs::exists(imagePath)) fs::remove(imagePath);
-        if (fs::exists(sidecarPath)) fs::remove(sidecarPath);
 
         cv::Mat sample = synthesizeTestSample();
         cv::imwrite((outDir / "00_original_as_captured.png").string(), sample);
@@ -149,6 +156,9 @@ int main() {
 
         std::cout << "  Wrote: " << (outDir / "00_original_as_captured.png") << "\n";
         std::cout << "  Wrote: " << (outDir / "01_rendered_levels_plus_echelle.png") << "\n";
+
+        check(entryNames(fs::current_path()) == workingDirBefore,
+              "nothing was written to the working directory (output goes under the temp directory)");
     }
 
     std::cout << "\n== Sidecar safety: atomic saves, an unreadable sidecar never costs the photo ==\n";
