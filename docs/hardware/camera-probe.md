@@ -76,16 +76,19 @@ The `*.txt` files and the PNGs of the A5. They decide the camera defaults
 
 ## Moticam A5: known so far
 
-From the first lab run (probe v1, 2026-10-12, no specimen in focus):
+From two lab runs (probe v1 on 2026-10-12, probe v2 on 2026-10-15; camera pointed at a
+plain wall, no microscope or specimen):
 
 | Item | Result |
 |---|---|
-| Index / APIs | index 0 is the A5; opens with both DirectShow and Media Foundation |
-| Default mode | 1024×768 |
-| Larger mode | **3840×2160 accepted and delivered** via DirectShow, with and without `--mjpg` |
-| Controls | DirectShow: exposure -7 (≈ 7.8 ms), gain 8, white balance 5000 K readable; MSMF reports no white balance |
-| Not yet known | pixel format (v1 could not decode it), real frame rate at 4K, whether manual exposure / white balance stick |
-| Image check | frames were a featureless pink field; at 4K 15–40 % of pixels clipped (overexposed) |
+| Index / APIs | index 0 is the A5; opens with both DirectShow and Media Foundation. Use **DirectShow**: only it exposes white balance. |
+| Default mode | 1024×768, format `0xE436EB7D` (believed to be DirectShow's RGB24 subtype; first 32 bits of its GUID) |
+| HD modes | **3840×2160 and 1920×1080 come as MJPG** whether or not `--mjpg` is passed; frames show JPEG 8×8 block edges (lossy) |
+| Frame rate | measured ~10 fps at 4K **and** at 1080p in auto exposure, 15 fps at 4K with exposure -9 → exposure-bound, not bandwidth-bound; DirectShow reports fps as 0 |
+| Exposure | manual `--exposure` works (-9 ≈ 2 ms read back, image darkens); `auto_exposure` is not readable through DirectShow (always -1) |
+| White balance | manual `--wb` works (auto_wb → 0, temperature read back); **auto WB is unstable** — the same wall came out pink in one run and lavender in the next, always green-deficient |
+| Persistence | **settings survive between programs**: a run started at exposure -9 left by the previous run. The app must apply its full camera profile on every open. Unplug/replug to reset. |
+| Not yet known | whether 3840×2160 is native or upscaled (a wall has no detail); exposure and colour through the microscope |
 
 ### Round 2 (probe v2) — with a real sample
 
