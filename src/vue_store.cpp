@@ -1,12 +1,15 @@
 #include "vue_store.hpp"
+#include "safe_write.hpp"
 #include "workstation_config.hpp"
 
+#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <fstream>
 #include <random>
 #include <stdexcept>
 #include <system_error>
@@ -18,6 +21,7 @@ namespace {
 constexpr std::size_t kMaxFolderNameBytes = 64;
 constexpr const char* kUnsortedFolder = "Unsorted";
 constexpr const char* kVueExtension = ".tiff";
+constexpr const char* kPrincipaleFile = "vue-principale.json";
 
 std::string toUpperAscii(std::string text) {
     for (char& c : text) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -148,6 +152,42 @@ std::vector<std::filesystem::path> VueStore::listVues(const VueLocation& locatio
         return a.filename().native() < b.filename().native();
     });
     return vues;
+}
+
+std::optional<std::filesystem::path> VueStore::principale(const VueLocation& location) const {
+    const std::filesystem::path dir = folder(location);
+    try {
+        std::ifstream in(dir / kPrincipaleFile, std::ios::binary);
+        if (!in) return std::nullopt;
+        nlohmann::json flag;
+        in >> flag;
+        const std::filesystem::path name = std::filesystem::u8path(flag.at("vue").get<std::string>());
+        // A bare file name in this folder, never a path out of it.
+        if (name != name.filename() || !isVueImage(name)) return std::nullopt;
+        const std::filesystem::path vue = dir / name;
+        if (!std::filesystem::is_regular_file(vue)) return std::nullopt;
+        return vue;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+void VueStore::setPrincipale(const VueLocation& location, const std::filesystem::path& vue) const {
+    const std::filesystem::path dir = folder(location);
+    std::error_code error;
+    const bool filedHere = isVueImage(vue) && std::filesystem::is_regular_file(vue, error) &&
+                           std::filesystem::equivalent(vue.parent_path(), dir, error);
+    if (!filedHere) {
+        throw std::invalid_argument("VueStore::setPrincipale: " + vue.string() + " is not a Vue filed in " +
+                                    dir.string());
+    }
+    detail::writeFileAtomically(dir / kPrincipaleFile, nlohmann::json{{"vue", vue.filename().u8string()}}.dump(2),
+                                "VueStore::setPrincipale");
+}
+
+void VueStore::clearPrincipale(const VueLocation& location) const {
+    std::error_code ignored;  // none flagged is fine
+    std::filesystem::remove(folder(location) / kPrincipaleFile, ignored);
 }
 
 } // namespace msapp

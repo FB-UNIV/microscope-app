@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,22 @@ public:
     // captured there yet. Lists only the images, not sidecars or the files
     // a sidecar was set aside to.
     std::vector<std::filesystem::path> listVues(const VueLocation& location) const;
+
+    // The Vue principale of `location` (CONTEXT.md): the one Vue flagged to
+    // appear on its TP's Fiche (ADR 0016), recorded in vue-principale.json
+    // in the Échantillon's folder. Empty when none is flagged — or when the
+    // flag file can't be read or names no Vue there any more: losing the
+    // flag costs no photo, and flagging again rewrites it.
+    std::optional<std::filesystem::path> principale(const VueLocation& location) const;
+
+    // Flags `vue`, a Vue filed at `location`, as its Vue principale. One
+    // atomic write replaces the earlier flag: never two Vues flagged, never
+    // none half-way. Throws std::invalid_argument when `vue` is not an
+    // existing image in that location's folder.
+    void setPrincipale(const VueLocation& location, const std::filesystem::path& vue) const;
+
+    // Unflags the Vue principale of `location`, if any. The Vue stays.
+    void clearPrincipale(const VueLocation& location) const;
 
 private:
     std::filesystem::path root_;

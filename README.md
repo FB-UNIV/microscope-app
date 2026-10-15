@@ -53,7 +53,10 @@ measured at another frame size than the camera delivers (ADR 0015).
 `<root>/Unsorted/` before any TP exists (ADR 0008). Names are made safe as
 Windows folder names (`TP 1: Aciers` → `TP 1_ Aciers`). `listVues()` lists
 an Échantillon's Vues in capture order. The root is the workstation
-config's `vue_root`, by default `vues` beside the config file.
+config's `vue_root`, by default `vues` beside the config file. Each
+Échantillon's Vue principale — the one its TP's Fiche shows (ADR 0016) —
+is flagged with `setPrincipale()`, one atomic `vue-principale.json` in its
+folder, so two Vues are never flagged at once.
 
 The `Catalog` of Departments → TPs (with the instructions students see) →
 Échantillons is `catalog.json`, beside the workstation config. In Phase 1 a
