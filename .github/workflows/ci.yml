@@ -56,8 +56,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned: this job also builds the camera_probe bundle shipped to lab
+      # PCs, so OpenCV must not change between two runs. Bump on purpose.
       - name: Install OpenCV (official prebuilt binaries)
-        run: choco install opencv --no-progress -y
+        run: choco install opencv --version 4.13.0 --no-progress -y
 
       - name: Locate OpenCV
         run: |
