@@ -21,11 +21,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # qt6-qpa-plugins carries the offscreen platform plugin the app launch
+      # test runs on; libqt6gui6 only recommends it.
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev python3 python3-numpy python3-opencv
+            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev qt6-base-dev qt6-qpa-plugins \
+            python3 python3-numpy python3-opencv
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wall -Wextra"
@@ -66,7 +69,17 @@ jobs:
           $root = "C:\tools\opencv\build"
           $runtime = Get-ChildItem "$root\x64" -Directory | Sort-Object Name -Descending | Select-Object -First 1
           "OpenCV_DIR=$root" >> $env:GITHUB_ENV
+          "OpenCV_BIN=$($runtime.FullName)\bin" >> $env:GITHUB_ENV
           "$($runtime.FullName)\bin" >> $env:GITHUB_PATH
+
+      # Pinned like OpenCV: this job also builds the microscope_app bundle
+      # shipped to lab PCs. Puts Qt (and windeployqt) on PATH for CMake and CTest.
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
 
       - name: Install nlohmann-json (vcpkg)
         run: vcpkg install nlohmann-json:x64-windows
@@ -82,23 +95,27 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # Ready-to-run camera_probe for lab PCs (docs/hardware/camera-probe.md):
-      # exe + OpenCV DLL + MSVC runtime DLLs side by side, so it runs from a
-      # folder without admin rights or a VC++ redistributable install.
-      - name: Bundle camera_probe
+      # Both bundles ship the MSVC runtime DLLs beside the exe, so they run
+      # from a folder without admin rights or a VC++ redistributable install.
+      - name: Locate the MSVC runtime DLLs
         run: |
-          $dist = "dist\camera_probe"
-          New-Item -ItemType Directory -Force $dist | Out-Null
-          Copy-Item build\Release\camera_probe.exe $dist
-          $runtime = Get-ChildItem "$env:OpenCV_DIR\x64" -Directory | Sort-Object Name -Descending | Select-Object -First 1
-          Get-ChildItem "$($runtime.FullName)\bin\opencv_world*.dll" |
-            Where-Object { $_.Name -notmatch 'd\.dll$' } | Copy-Item -Destination $dist
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
           $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory | Sort-Object Name -Descending |
             ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
             Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $crt) { throw "MSVC x64 CRT redist folder not found" }
-          Copy-Item "$crt\*.dll" $dist
+          "MSVC_CRT=$crt" >> $env:GITHUB_ENV
+
+      # Ready-to-run camera_probe for lab PCs (docs/hardware/camera-probe.md):
+      # exe + OpenCV DLL + MSVC runtime DLLs side by side.
+      - name: Bundle camera_probe
+        run: |
+          $dist = "dist\camera_probe"
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item build\Release\camera_probe.exe $dist
+          Get-ChildItem "$env:OpenCV_BIN\opencv_world*.dll" |
+            Where-Object { $_.Name -notmatch 'd\.dll$' } | Copy-Item -Destination $dist
+          Copy-Item "$env:MSVC_CRT\*.dll" $dist
           Copy-Item docs\hardware\camera-probe.md "$dist\README.md"
           Get-ChildItem $dist | Format-Table Name, Length
 
@@ -119,5 +136,45 @@ jobs:
         with:
           name: camera_probe-windows
           path: dist/camera_probe
+          if-no-files-found: error
+          retention-days: 90
+
+      # Ready-to-run microscope_app for lab PCs: windeployqt adds the Qt DLLs
+      # and plugins (platforms\qwindows.dll above all); OpenCV and the MSVC
+      # runtime are copied beside them as for camera_probe. No Qt translations
+      # yet: they come with the French UI.
+      - name: Bundle microscope_app
+        run: |
+          $dist = "dist\microscope_app"
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item build\app\Release\microscope_app.exe $dist
+          windeployqt --release --no-translations --no-compiler-runtime --no-opengl-sw --no-system-d3d-compiler "$dist\microscope_app.exe"
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+          Get-ChildItem "$env:OpenCV_BIN\opencv_world*.dll" |
+            Where-Object { $_.Name -notmatch 'd\.dll$' } | Copy-Item -Destination $dist
+          Copy-Item "$env:MSVC_CRT\*.dll" $dist
+          Get-ChildItem $dist -Recurse -Name
+
+      # Prove the bundle is self-contained: every PATH folder holding Qt or
+      # OpenCV DLLs dropped, QT_PLUGIN_PATH cleared, exe run from the bundle on
+      # the real Windows platform plugin. A missing DLL or plugin shows a
+      # dialog instead of exiting, hence the timeout.
+      - name: Smoke-test microscope_app bundle
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'Qt6Core.dll')) -and -not (Test-Path (Join-Path $_ 'opencv_world*.dll'))
+          }) -join ';'
+          Remove-Item Env:QT_PLUGIN_PATH -ErrorAction SilentlyContinue
+          $app = Start-Process .\dist\microscope_app\microscope_app.exe -ArgumentList '--smoke-test' -PassThru
+          $null = $app.Handle  # keeps ExitCode readable once the process has exited
+          if (-not $app.WaitForExit(60000)) { $app.Kill(); throw "microscope_app did not quit within 60 s" }
+          if ($app.ExitCode -ne 0) { throw "microscope_app exited with code $($app.ExitCode)" }
+          Write-Output "microscope_app launched from the bundle and quit cleanly"
+
+      - name: Upload microscope_app bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: microscope_app-windows
+          path: dist/microscope_app
           if-no-files-found: error
           retention-days: 90
