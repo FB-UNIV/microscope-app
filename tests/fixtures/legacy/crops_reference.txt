@@ -1,0 +1,3 @@
+CTTM1Ech1Vue1_crop256.png: threshold=95 tolerance=9 dark=13.282776 light=86.717224 error=1.599884
+CTTM1Ech2Vue1_crop256.png: threshold=150 tolerance=13 dark=64.813232 light=35.186768 error=5.811310
+CTTM1Ech3Vue1_crop256.png: threshold=161 tolerance=12 dark=91.578674 light=8.421326 error=1.897430
