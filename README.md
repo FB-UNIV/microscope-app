@@ -12,15 +12,15 @@ codebase look more complex than they need to be on purpose (see ADR 0004
 and ADR 0007 in particular); the ADR explains the failure mode it's there
 to prevent.
 
-## Current status: Phase 1 core (per ADR 0009), pre-UI
+## Current status: Phase 1 core and the capture app (per ADR 0009)
 
 This is the first slice: the `Treatment` pipeline (ADR 0002), `Levels` and
 `Échelle` treatments, and `Vue` persistence (ADR 0003 — plain original +
 JSON sidecar, non-destructive). It started as pure C++ + OpenCV with no
 Qt and no camera — deliberately, so the imaging math and the storage model
 could be built and verified without needing a Windows machine, Qt, or a
-Moticam attached. Camera capture came next (below); the Qt 6 app in
-`app/` now shows a live camera preview (no capture button yet).
+Moticam attached. Camera capture came next (below), then the Qt 6 capture
+app in `app/` (see *Using the app*).
 
 Also built since: `CaptureStation` with the measured Moticam A5 camera
 profile and the per-microscope White reference (ADR 0014); the
@@ -67,20 +67,44 @@ or `GMP` and `gmp`) are refused with both names. No file means no
 catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
 becomes the cache of what the API serves (ADR 0007).
 
-`microscope_app` previews the workstation's camera through a
-`CaptureStation` on a worker thread, so the profile is re-applied and the
-White reference baked in exactly as a capture would see it. A banner names
-every setting the camera did not grant (exposure, colour temperature, frame
-size, pixel format), and a camera held by MotiConnect gets a message plus
-a *Reconnecter la caméra* button (F5). For a demo PC, these options
-override the config for one run without changing it: `--device N` (e.g. a
-laptop whose own webcam is 0), `--api dshow|msmf|auto`, `--size WxH`
-(`0x0` = device default), and `--replay IMAGE` (repeatable) to preview image
-files with no camera at all.
+**Not yet built:** Fiche (PDF) generation (Phase 1d), filing Unsorted Vues
+into an Échantillon, a catalog editor inside the app, and everything in
+ADRs 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2,
+deliberately deferred. No Motic SDK backend is planned: the A5 doesn't need
+one.
 
-**Not yet built:** the rest of the Qt UI (capture, Calibration wizard, TP/Échantillon picker), Fiche (PDF) generation, and everything in ADRs
-0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2, deliberately
-deferred. No Motic SDK backend is planned: the A5 doesn't need one.
+## Using the app
+
+`microscope_app` (French UI) on a lab PC, MotiConnect closed:
+
+- **Capture.** Pick *Département › TP › Échantillon* (from `catalog.json`;
+  the TP's instructions show on the right), the *Grossissement*, then
+  *Capturer* (Space). The live preview runs on a worker thread through a
+  `CaptureStation`, so the camera profile is re-applied and the White
+  reference baked in exactly as the capture will be. The Vue is filed by
+  `VueStore` with the Grossissement's Calibration and its Échelle — or
+  without either when that objective isn't calibrated, or was calibrated at
+  another frame size than the camera delivers (ADR 0015); the banner says
+  which. It also names every camera setting not granted (exposure, colour
+  temperature, frame size, pixel format); a camera held by MotiConnect gets
+  a message and *Reconnecter la caméra* (F5).
+- **Vues.** The right panel lists the Échantillon's Vues, newest first;
+  *★ Choisir comme Vue principale* flags the one for the Fiche.
+  Double-click opens a Vue: Levels with a live preview, the Échelle,
+  removing a Treatment (all saved in the sidecar at once), *Mesurer une
+  longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
+  default), and *Analyse de phases* (CALCUL, percentages, histogram with
+  the Seuil, the phase map as a Treatment). Measuring is refused on an
+  uncalibrated Vue.
+- **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
+  on), *Calibrer un grossissement sur la mire* (click a line of the 20 µm
+  mire and the line N periods further, until two readings agree within
+  0.25 %), *Modifier / Recharger le catalogue de TP*, *Ouvrir le dossier des
+  Vues*. Settings are saved to `workstation.json`.
+- **Demo PC.** These options override the config for one run without
+  changing it: `--device N` (a laptop's own webcam is often 0), `--api
+  dshow|msmf|auto`, `--size WxH` (`0x0` = device default), and `--replay
+  IMAGE` (repeatable) to work on image files with no camera at all.
 
 ## Building
 
@@ -131,19 +155,12 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    back; record the working capture API, size and pixel format (ADR 0013).
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
-2. Finish the Qt `MainWindow` (`app/`; the live preview is done): a capture
-   button once Vues have unique paths (#18), passing
-   `calibrationForFrame()` of the selected Grossissement to `capture()`; a
-   setup action to calibrate the White reference from a blank field and save
-   it with `saveWorkstationConfig()`; Measurements with
-   `Measurement(p1, p2, vue)`.
-3. Calibration wizard UI against the 20 µm mire. `MireCalibration` already
-   does the maths: each pair of clicks N periods apart is one px/µm
-   reading, readings repeat until the newest two agree within 0.25 % (the
-   legacy procedure), and `result()` is their mean with the frame size it
-   was measured at (ADR 0015), to store with
-   `WorkstationConfig::setCalibration()`.
-4. Fiche generation: one PDF sheet per TP with each Échantillon's name,
+2. Try the capture app on that PC with a real session: write `catalog.json`,
+   measure the White reference, calibrate each objective on the mire,
+   capture, then check a Measurement against the mire and Phase analysis
+   against an archived result. Confirm the phase-map colours with a
+   teacher (#25: the legacy plane order was inferred).
+3. Fiche generation: one PDF sheet per TP with each Échantillon's name,
    Vue principale, Grossissement and Échelle (ADR 0016).
 
 Phase-analysis parity always runs (CI included) on three 256×256 crops of
