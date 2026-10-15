@@ -13,6 +13,7 @@
 #include <random>
 #include <stdexcept>
 #include <system_error>
+#include <utility>
 
 namespace msapp {
 
@@ -80,6 +81,64 @@ bool isVueImage(const std::filesystem::path& path) {
     const std::string extension = toUpperAscii(path.extension().string());
     return extension == ".TIFF" || extension == ".TIF" || extension == ".PNG" || extension == ".JPG" ||
            extension == ".JPEG" || extension == ".BMP";
+}
+
+// The file name the Vue principale flag of folder `dir` names; empty when
+// there is no flag or it can't be read. Only a bare file name of an image
+// counts, never a path out of the folder.
+std::optional<std::filesystem::path> flaggedName(const std::filesystem::path& dir) {
+    try {
+        std::ifstream in(dir / kPrincipaleFile, std::ios::binary);
+        if (!in) return std::nullopt;
+        nlohmann::json flag;
+        in >> flag;
+        const std::filesystem::path name = std::filesystem::u8path(flag.at("vue").get<std::string>());
+        if (name != name.filename() || !isVueImage(name)) return std::nullopt;
+        return name;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+bool startsWith(const std::filesystem::path& name, const std::filesystem::path& prefix) {
+    return name.native().compare(0, prefix.native().size(), prefix.native()) == 0;
+}
+
+// The files named after the Vue image `vue`, beside it: <image>.json, its
+// sidecar, and <image>.json.unreadable, .mismatched..., the files a sidecar
+// was set aside to.
+std::vector<std::filesystem::path> filesNamedAfter(const std::filesystem::path& vue) {
+    auto prefix = vue.filename();
+    prefix += ".";
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(vue.parent_path())) {
+        if (entry.is_regular_file() && startsWith(entry.path().filename(), prefix)) files.push_back(entry.path());
+    }
+    return files;
+}
+
+// True when a Vue can be filed in `dir` as `name`: no file there has that
+// name, or one named after it — a sidecar or set-aside file left without its
+// image would become this Vue's.
+bool nameIsFree(const std::filesystem::path& dir, const std::filesystem::path& name) {
+    std::error_code error;
+    if (std::filesystem::exists(dir / name, error)) return false;  // ignoring case, on Windows
+    auto prefix = name;
+    prefix += ".";
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        const std::filesystem::path other = entry.path().filename();
+        if (other == name || startsWith(other, prefix)) return false;
+    }
+    return true;
+}
+
+// Renames `from` to `to`, never over a file already at `to`: rename()
+// itself would replace it.
+std::error_code moveFile(const std::filesystem::path& from, const std::filesystem::path& to) {
+    std::error_code error;
+    if (std::filesystem::exists(to, error)) return std::make_error_code(std::errc::file_exists);
+    std::filesystem::rename(from, to, error);
+    return error;
 }
 
 } // namespace
@@ -156,20 +215,12 @@ std::vector<std::filesystem::path> VueStore::listVues(const VueLocation& locatio
 
 std::optional<std::filesystem::path> VueStore::principale(const VueLocation& location) const {
     const std::filesystem::path dir = folder(location);
-    try {
-        std::ifstream in(dir / kPrincipaleFile, std::ios::binary);
-        if (!in) return std::nullopt;
-        nlohmann::json flag;
-        in >> flag;
-        const std::filesystem::path name = std::filesystem::u8path(flag.at("vue").get<std::string>());
-        // A bare file name in this folder, never a path out of it.
-        if (name != name.filename() || !isVueImage(name)) return std::nullopt;
-        const std::filesystem::path vue = dir / name;
-        if (!std::filesystem::is_regular_file(vue)) return std::nullopt;
-        return vue;
-    } catch (const std::exception&) {
-        return std::nullopt;
-    }
+    const auto name = flaggedName(dir);
+    if (!name) return std::nullopt;
+    const std::filesystem::path vue = dir / *name;
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(vue, error)) return std::nullopt;
+    return vue;
 }
 
 void VueStore::setPrincipale(const VueLocation& location, const std::filesystem::path& vue) const {
@@ -188,6 +239,60 @@ void VueStore::setPrincipale(const VueLocation& location, const std::filesystem:
 void VueStore::clearPrincipale(const VueLocation& location) const {
     std::error_code ignored;  // none flagged is fine
     std::filesystem::remove(folder(location) / kPrincipaleFile, ignored);
+}
+
+std::filesystem::path VueStore::fileVue(const std::filesystem::path& vue, const VueLocation& to) const {
+    if (to.isUnsorted()) {
+        throw std::invalid_argument("VueStore::fileVue: a Vue is filed under an Échantillon, not into Unsorted");
+    }
+    const std::filesystem::path dir = folder(to);
+    const std::filesystem::path from = vue.parent_path();
+    std::error_code error;
+    const bool inStore = std::filesystem::equivalent(from, root_ / kUnsortedFolder, error) ||
+                         std::filesystem::equivalent(from.parent_path().parent_path().parent_path(), root_, error);
+    if (!isVueImage(vue) || !std::filesystem::is_regular_file(vue, error) || !inStore) {
+        throw std::invalid_argument("VueStore::fileVue: " + vue.string() + " is not a Vue filed under " +
+                                    root_.string());
+    }
+    if (std::filesystem::equivalent(from, dir, error)) return vue;
+
+    std::filesystem::create_directories(dir);
+    std::filesystem::path target = dir / vue.filename();
+    // Taken in practice only by a copy of this same Vue.
+    for (int attempt = 0; !nameIsFree(dir, target.filename()); ++attempt) {
+        if (attempt == 100) throw std::runtime_error("VueStore::fileVue: no free file name in " + dir.string());
+        target = newVuePath(to).replace_extension(vue.extension());
+    }
+
+    // The sidecar and set-aside files first, the image last: listVues()
+    // shows the Vue in its new folder only once its Treatments are there.
+    std::vector<std::pair<std::filesystem::path, std::filesystem::path>> moves;
+    for (const auto& file : filesNamedAfter(vue)) {
+        auto name = target.filename();  // <new image name> + what followed the old one
+        name += file.filename().native().substr(vue.filename().native().size());
+        moves.emplace_back(file, dir / name);
+    }
+    moves.emplace_back(vue, target);
+
+    for (std::size_t i = 0; i < moves.size(); ++i) {
+        const std::error_code failure = moveFile(moves[i].first, moves[i].second);
+        if (!failure) continue;
+        const std::string why = "VueStore::fileVue: could not move " + moves[i].first.string() + " to " +
+                                moves[i].second.string() + " (" + failure.message() + ")";
+        // Back where they were, so the Vue stays whole in its old folder.
+        std::string stranded;
+        while (i-- > 0) {
+            if (moveFile(moves[i].second, moves[i].first)) stranded += "\n  " + moves[i].second.string();
+        }
+        if (stranded.empty()) throw std::runtime_error(why + "; the Vue stays in " + from.string());
+        throw std::runtime_error(why + "; these files could not be moved back to " + from.string() +
+                                 " either:" + stranded);
+    }
+
+    // The flag names a file of the old folder: a flag that can't be removed
+    // names a file gone from there, which principale() reads as none.
+    if (flaggedName(from) == vue.filename()) std::filesystem::remove(from / kPrincipaleFile, error);
+    return target;
 }
 
 } // namespace msapp
