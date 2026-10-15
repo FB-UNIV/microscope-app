@@ -86,6 +86,59 @@ void Vue::addTreatment(std::unique_ptr<Treatment> t) {
     saveSidecar();
 }
 
+namespace {
+
+void requireIndex(std::size_t index, std::size_t size, const char* context) {
+    if (index >= size) {
+        throw std::out_of_range(std::string(context) + ": no treatment at index " + std::to_string(index) +
+                                ", the Vue has " + std::to_string(size));
+    }
+}
+
+} // namespace
+
+void Vue::insertTreatment(std::size_t index, std::unique_ptr<Treatment> t) {
+    requireIndex(index, treatments_.size() + 1, "Vue::insertTreatment");
+    if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+        throw std::runtime_error("Vue::insertTreatment: " + *why);
+    }
+    const auto at = treatments_.begin() + static_cast<std::ptrdiff_t>(index);
+    treatments_.insert(at, std::move(t));
+    try {
+        saveSidecar();
+    } catch (...) {
+        treatments_.erase(treatments_.begin() + static_cast<std::ptrdiff_t>(index));
+        throw;
+    }
+}
+
+void Vue::replaceTreatment(std::size_t index, std::unique_ptr<Treatment> t) {
+    requireIndex(index, treatments_.size(), "Vue::replaceTreatment");
+    if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+        throw std::runtime_error("Vue::replaceTreatment: " + *why);
+    }
+    std::swap(treatments_[index], t);
+    try {
+        saveSidecar();
+    } catch (...) {
+        std::swap(treatments_[index], t);
+        throw;
+    }
+}
+
+void Vue::removeTreatment(std::size_t index) {
+    requireIndex(index, treatments_.size(), "Vue::removeTreatment");
+    const auto at = treatments_.begin() + static_cast<std::ptrdiff_t>(index);
+    std::unique_ptr<Treatment> removed = std::move(*at);
+    treatments_.erase(at);
+    try {
+        saveSidecar();
+    } catch (...) {
+        treatments_.insert(treatments_.begin() + static_cast<std::ptrdiff_t>(index), std::move(removed));
+        throw;
+    }
+}
+
 cv::Mat Vue::render() const {
     cv::Mat result = original_.clone();
     for (const auto& t : treatments_) {
