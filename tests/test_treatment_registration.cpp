@@ -11,6 +11,7 @@
 
 #include "treatment_factory.hpp"
 #include "vue.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/imgcodecs.hpp>
 #include <filesystem>
@@ -20,20 +21,10 @@
 #include <string>
 
 using namespace msapp;
+using namespace msapp::test;
 namespace fs = std::filesystem;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
 
 // Sidecar params for each built-in type, written as a saved Vue would have them.
 const nlohmann::json kBuiltins = {
@@ -80,7 +71,5 @@ int main() {
     }
 
     fs::remove_all(dir);
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

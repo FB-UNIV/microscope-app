@@ -6,6 +6,7 @@
 #include "vickers.hpp"
 #include "calibration.hpp"
 #include "measurement.hpp"
+#include "test_support.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -13,23 +14,9 @@
 #include <string>
 
 using namespace msapp;
+using namespace msapp::test;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-bool nearlyEqual(double a, double b, double eps = 1e-6) {
-    return std::abs(a - b) < eps;
-}
 
 // The legacy formula exactly as decompiled (0x44aad0), d in um.
 double legacyHV(double meanDiagonalMicrons) {
@@ -92,7 +79,5 @@ int main() {
         check(threw, "negative load throws invalid_argument");
     }
 
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

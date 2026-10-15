@@ -10,6 +10,7 @@
 #include "levels_treatment.hpp"
 #include "measurement.hpp"
 #include "vue.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/imgcodecs.hpp>
 #include <cmath>
@@ -22,24 +23,10 @@
 #include <vector>
 
 using namespace msapp;
+using namespace msapp::test;
 namespace fs = std::filesystem;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-bool nearlyEqual(double a, double b, double eps = 1e-9) {
-    return std::abs(a - b) < eps;
-}
 
 std::string readFile(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -356,7 +343,5 @@ int main() {
     }
 
     fs::remove_all(dir);
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

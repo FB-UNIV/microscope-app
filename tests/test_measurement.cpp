@@ -11,6 +11,7 @@
 #include "measurement.hpp"
 #include "calibration.hpp"
 #include "echelle_treatment.hpp"
+#include "test_support.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -18,25 +19,7 @@
 #include <string>
 
 using namespace msapp;
-
-namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-bool nearlyEqual(double a, double b, double eps = 1e-9) {
-    return std::abs(a - b) < eps;
-}
-
-} // namespace
+using namespace msapp::test;
 
 int main() {
     Calibration calib{"x40", 2.5}; // 2.5 px per micron
@@ -149,7 +132,5 @@ int main() {
         check(m.label() == "2.5 um", "label() formats a fractional result as '2.5 um' (got '" + m.label() + "')");
     }
 
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

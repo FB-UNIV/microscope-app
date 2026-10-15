@@ -7,6 +7,7 @@
 #include "camera_factory.hpp"
 #include "file_replay_camera.hpp"
 #include "opencv_camera.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/imgcodecs.hpp>
 #include <filesystem>
@@ -15,32 +16,8 @@
 #include <string>
 
 using namespace msapp;
+using namespace msapp::test;
 namespace fs = std::filesystem;
-
-namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-template <typename Exception, typename Fn>
-std::string throwsWith(Fn fn) {
-    try {
-        fn();
-    } catch (const Exception& e) {
-        return e.what();
-    }
-    return {};
-}
-
-} // namespace
 
 int main() {
     const fs::path dir = fs::temp_directory_path() / "msapp_camera_test";
@@ -176,7 +153,5 @@ int main() {
     }
 
     fs::remove_all(dir);
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

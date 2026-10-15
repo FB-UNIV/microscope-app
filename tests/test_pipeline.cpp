@@ -2,6 +2,7 @@
 #include "levels_treatment.hpp"
 #include "echelle_treatment.hpp"
 #include "calibration.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <filesystem>
@@ -14,20 +15,10 @@
 #include <string>
 
 using namespace msapp;
+using namespace msapp::test;
 namespace fs = std::filesystem;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
 
 // Synthesizes a deliberately low-contrast grayscale test image, standing in
 // for a real Moticam capture until real hardware is on hand (Phase 1 scope
@@ -245,7 +236,5 @@ int main() {
         fs::remove_all(dir);
     }
 
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

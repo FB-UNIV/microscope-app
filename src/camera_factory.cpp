@@ -1,4 +1,5 @@
 #include "camera_factory.hpp"
+#include "json_optional.hpp"
 #include "file_replay_camera.hpp"
 #include "opencv_camera.hpp"
 
@@ -6,18 +7,8 @@
 
 namespace msapp {
 
-namespace {
-
-nlohmann::json optionalToJson(const std::optional<double>& value) {
-    return value ? nlohmann::json(*value) : nlohmann::json(nullptr);
-}
-
-std::optional<double> optionalFromJson(const nlohmann::json& j, const char* key) {
-    if (!j.contains(key) || j.at(key).is_null()) return std::nullopt;
-    return j.at(key).get<double>();
-}
-
-} // namespace
+using detail::optionalFromJson;
+using detail::optionalToJson;
 
 nlohmann::json CameraConfig::toJson() const {
     nlohmann::json framesJson = nlohmann::json::array();
