@@ -47,11 +47,17 @@ public:
     // Loads an existing Vue: reads the original image, plus its sidecar
     // (imagePath + ".json") if one exists — a Vue with no treatments yet
     // simply has no sidecar file, which is a valid state, not an error.
+    // A sidecar that exists but cannot be read (corrupt JSON, unknown
+    // treatment type, bad params) does not stop the photo loading (ADR 0003):
+    // the Vue comes back with no treatments and no capture info, and
+    // sidecarError() says why. Only an unreadable image throws.
     static Vue load(const std::filesystem::path& imagePath);
 
     // Appends a treatment to the pipeline and persists the updated sidecar
     // immediately (no separate "save" step — matches the sidecar being the
-    // single source of truth for what's applied).
+    // single source of truth for what's applied). The sidecar is replaced
+    // atomically; if load() found it unreadable, it is first kept aside as
+    // sidecarPath() + ".unreadable" rather than overwritten (ADR 0004).
     void addTreatment(std::unique_ptr<Treatment> t);
 
     // Renders the untouched original with every treatment applied in
@@ -65,6 +71,10 @@ public:
     // Empty for Vues captured without a CaptureStation (tests, imports) and
     // for sidecars written before ADR 0014.
     const std::optional<CaptureInfo>& captureInfo() const { return captureInfo_; }
+    // Why load() could not read this Vue's sidecar; empty when it read fine
+    // or there was none. For the UI to tell the user the treatment history
+    // was lost (the photo itself is intact).
+    const std::optional<std::string>& sidecarError() const { return sidecarError_; }
 
     std::filesystem::path sidecarPath() const;
 
@@ -73,8 +83,11 @@ private:
     cv::Mat original_;
     std::vector<std::unique_ptr<Treatment>> treatments_;
     std::optional<CaptureInfo> captureInfo_;
+    std::optional<std::string> sidecarError_;
+    // True while the file at sidecarPath() is the one load() could not read.
+    bool unreadableSidecarOnDisk_ = false;
 
-    void saveSidecar() const;
+    void saveSidecar();
     void loadSidecarIfPresent();
 };
 

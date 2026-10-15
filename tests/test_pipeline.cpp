@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
 
 using namespace msapp;
 namespace fs = std::filesystem;
@@ -40,6 +43,11 @@ cv::Mat synthesizeTestSample() {
     }
     cv::GaussianBlur(img, img, cv::Size(9, 9), 0);
     return img;
+}
+
+std::string readFile(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
 } // namespace
@@ -115,6 +123,76 @@ int main() {
 
         std::cout << "  Wrote: " << (outDir / "00_original_as_captured.png") << "\n";
         std::cout << "  Wrote: " << (outDir / "01_rendered_levels_plus_echelle.png") << "\n";
+    }
+
+    std::cout << "\n== Sidecar safety: atomic saves, an unreadable sidecar never costs the photo ==\n";
+    {
+        const fs::path dir = fs::temp_directory_path() / "msapp_vue_sidecar_test";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        const cv::Mat sample = synthesizeTestSample();
+
+        Vue vue = Vue::capture(sample, dir / "atomic.png");
+        vue.addTreatment(std::make_unique<LevelsTreatment>(90, 180));
+        const std::string savedSidecar = readFile(vue.sidecarPath());
+        const fs::path tempPath = vue.sidecarPath().string() + ".tmp";
+        check(!fs::exists(tempPath), "a save leaves no temp file behind");
+
+        fs::create_directory(tempPath);  // the next save can no longer write its temp file
+        bool threw = false;
+        try {
+            vue.addTreatment(std::make_unique<EchelleTreatment>(Calibration{"x40", 2.5}));
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        check(threw, "a save that cannot be written throws");
+        check(readFile(vue.sidecarPath()) == savedSidecar, "a failed save leaves the previous sidecar intact");
+
+        const fs::path corruptImage = dir / "corrupt.png";
+        cv::imwrite(corruptImage.string(), sample);
+        const fs::path corruptSidecar = corruptImage.string() + ".json";
+        const std::string truncated = R"({"treatments": [{"type": "levels", "params": {"black_po)";
+        std::ofstream(corruptSidecar, std::ios::binary) << truncated;
+
+        Vue bare;
+        try {
+            bare = Vue::load(corruptImage);
+            check(true, "a truncated sidecar does not stop the photo from loading");
+        } catch (const std::exception& e) {
+            check(false, std::string("a truncated sidecar does not stop the photo from loading (threw: ") +
+                             e.what() + ")");
+        }
+        check(bare.treatmentCount() == 0 && !bare.original().empty(), "it loads as the bare photo, no treatments");
+        check(bare.sidecarError().has_value(), "the reason is reported through sidecarError()");
+        check(readFile(corruptSidecar) == truncated, "loading writes nothing: the unreadable sidecar is untouched");
+
+        if (bare.sidecarError()) {
+            bare.addTreatment(std::make_unique<LevelsTreatment>(90, 180));
+            const fs::path aside = corruptSidecar.string() + ".unreadable";
+            check(fs::exists(aside) && readFile(aside) == truncated,
+                  "the next save keeps the unreadable sidecar aside instead of overwriting it");
+            Vue reloaded = Vue::load(corruptImage);
+            check(reloaded.treatmentCount() == 1 && !reloaded.sidecarError(), "the new sidecar reloads cleanly");
+            bare.addTreatment(std::make_unique<EchelleTreatment>(Calibration{"x40", 2.5}));
+            check(!fs::exists(aside.string() + ".2") && readFile(aside) == truncated,
+                  "later saves only replace the new sidecar");
+        }
+
+        const fs::path unknownImage = dir / "unknown_type.png";
+        cv::imwrite(unknownImage.string(), sample);
+        std::ofstream(unknownImage.string() + ".json")
+            << R"({"treatments": [{"type": "levels", "params": {"black_point": 90, "white_point": 180}},)"
+               R"( {"type": "no_such_treatment", "params": {}}]})";
+        try {
+            Vue partial = Vue::load(unknownImage);
+            check(partial.treatmentCount() == 0 && partial.sidecarError() &&
+                      partial.sidecarError()->find("no_such_treatment") != std::string::npos,
+                  "an unknown treatment type loads none of the stack, not half of it, and is named");
+        } catch (const std::exception& e) {
+            check(false, std::string("an unknown treatment type does not stop the photo from loading (threw: ") +
+                             e.what() + ")");
+        }
+        fs::remove_all(dir);
     }
 
     std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
