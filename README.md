@@ -21,7 +21,9 @@ camera capture yet — deliberately, so the imaging math and the storage
 model could be built and verified without needing a Windows machine, Qt,
 or a Moticam attached.
 
-Also built since: the `Measurement` tool; the legacy lab measurements,
+Also built since: `CaptureStation` with the measured Moticam A5 camera
+profile and the per-microscope White reference (ADR 0014); the
+`Measurement` tool; the legacy lab measurements,
 ported bit-exact from the decompiled legacy exe (ADR 0012) — Phase
 analysis (`analyzePhases`, plus the `phase_overlay` Treatment) and Dureté
 Vickers (`vickersHardness`); the `ICamera` capture abstraction with file
@@ -72,8 +74,10 @@ tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used b
    back; record the working capture API, size and pixel format (ADR 0013).
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
-2. Qt `MainWindow`: live preview + capture button, wired to `ICamera` +
-   `Vue::capture`, using the camera settings found in step 1.
+2. Qt `MainWindow`: live preview + capture button, driving a
+   `CaptureStation` built from `moticamA5Profile()` (re-applies the camera
+   profile on every open, bakes in the White reference — ADR 0014), plus a
+   setup action to calibrate the White reference from a blank field.
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat
    until two readings agree within 0.25 %).
 4. Fiche generation (PDF: Échantillon name + Vue principale + Grossissement
