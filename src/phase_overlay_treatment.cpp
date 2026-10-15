@@ -14,8 +14,9 @@ PhaseOverlayTreatment::PhaseOverlayTreatment(int threshold) : threshold_(thresho
 }
 
 cv::Mat PhaseOverlayTreatment::apply(const cv::Mat& input) const {
-    // Same grey reduction the phase analysis counts on, so the overlay shows
-    // exactly what was measured.
+    // Same grey reduction the phase analysis thresholds. For colour input the
+    // counts are taken on the smoothed grey (legacySmooth) while this overlay
+    // is not smoothed, exactly as the legacy creeImageSeuil did.
     const cv::Mat grey = legacyGrey(input);
 
     uchar compressed[256];
