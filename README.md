@@ -12,14 +12,14 @@ codebase look more complex than they need to be on purpose (see ADR 0004
 and ADR 0007 in particular); the ADR explains the failure mode it's there
 to prevent.
 
-## Current status: Phase 1 core (per ADR 0009), pre-UI, pre-camera
+## Current status: Phase 1 core (per ADR 0009), pre-UI
 
 This is the first slice: the `Treatment` pipeline (ADR 0002), `Levels` and
 `Échelle` treatments, and `Vue` persistence (ADR 0003 — plain original +
-JSON sidecar, non-destructive). It's pure C++ + OpenCV, no Qt yet, no
-camera capture yet — deliberately, so the imaging math and the storage
-model could be built and verified without needing a Windows machine, Qt,
-or a Moticam attached.
+JSON sidecar, non-destructive). It started as pure C++ + OpenCV with no
+Qt and no camera — deliberately, so the imaging math and the storage model
+could be built and verified without needing a Windows machine, Qt, or a
+Moticam attached. Camera capture came next (below); Qt is still to come.
 
 Also built since: `CaptureStation` with the measured Moticam A5 camera
 profile and the per-microscope White reference (ADR 0014); the

@@ -1,5 +1,6 @@
 #include "echelle_treatment.hpp"
 #include "format_microns.hpp"
+#include <opencv2/imgproc.hpp>
 #include <cmath>
 #include <stdexcept>
 #include <string>

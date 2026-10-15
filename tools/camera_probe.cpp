@@ -146,6 +146,8 @@ int main(int argc, char** argv) {
         return 2;
     }
     fs::create_directories(opt.outDir);
+    // First line of every report: the OpenCV this bundle was built with and runs on.
+    std::cout << "camera_probe: OpenCV " << CV_VERSION << " (runtime " << cv::getVersionString() << ")\n";
 
     int working = 0;
     for (int index = 0; index < opt.maxIndex; ++index) {

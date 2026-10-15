@@ -15,7 +15,7 @@ The pixels-per-µm ratio tied to one Grossissement and to the frame size it was 
 _Avoid_: Resolution (legacy TIFF-tag term from the old app, ambiguous with image resolution)
 
 **Échelle**:
-The visual scale-bar overlay rendered onto a photo, built from its Calibration. A Treatment — it mutates the saved photo. Added automatically to every Vue captured with a Calibration; there is no per-TP setting (ADR 0017).
+The visual scale-bar overlay rendered onto a photo, built from its Calibration. A Treatment: drawn onto the rendered photo, never into the stored original (ADR 0003). Added automatically to every Vue captured with a Calibration; there is no per-TP setting (ADR 0017).
 _Avoid_: Resolution
 
 **Measurement**:
@@ -57,7 +57,7 @@ A named sample slot within a TP (e.g. "Ac1: XC10"), pre-defined by the teacher b
 _Avoid_: Sample
 
 **Vue**:
-One saved photo (+ its Treatments) attached to an Échantillon. Legacy app capped this at 3 per Échantillon with one flagged for printing — open question whether that cap still applies (not yet resolved).
+One saved photo (+ its Treatments) attached to an Échantillon. Legacy app capped this at 3 per Échantillon with one flagged for printing; the cap is dropped (ADR 0010), and the flag survives as the Vue principale.
 _Avoid_: Photo (a Vue is the photo in its TP/Échantillon context, not just an image file)
 
 **Unsorted**:

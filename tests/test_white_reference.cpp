@@ -5,6 +5,7 @@
 //   tint (ADR 0014).
 
 #include "white_reference.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/imgproc.hpp>
 #include <cmath>
@@ -13,23 +14,9 @@
 #include <string>
 
 using namespace msapp;
+using namespace msapp::test;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-bool nearlyEqual(double a, double b, double eps) {
-    return std::abs(a - b) < eps;
-}
 
 // A green-deficient blank field like the A5's: B 200, G 120, R 180.
 cv::Mat tintedField(int rows = 300, int cols = 400) {
@@ -103,7 +90,5 @@ int main() {
         check(out4.at<cv::Vec4b>(0, 0) == cv::Vec4b(50, 100, 200, 77), "BGRA: colour scaled, alpha untouched");
     }
 
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

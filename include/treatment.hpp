@@ -1,6 +1,6 @@
 #pragma once
 
-#include <opencv2/opencv.hpp>
+#include <opencv2/core.hpp>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>

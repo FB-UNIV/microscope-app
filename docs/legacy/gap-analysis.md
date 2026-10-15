@@ -36,13 +36,13 @@ set exposure, gain, white balance / resolution list), with an OpenCV backend for
 | Legacy feature | Evidence | New app status | Action |
 |---|---|---|---|
 | Live capture | MIL, 3 HW paths | `ICamera` + OpenCV backend | Moticam A5 is UVC → OpenCV backend (ADR 0013); confirm modes with `camera_probe` |
-| White balance / exposure | config rows (1.745, 1.0, 2.576), "Balance des Blancs" | — | expose via `ICamera`; persist per workstation |
+| White balance / exposure | config rows (1.745, 1.0, 2.576), "Balance des Blancs" | Camera profile + White reference in `CaptureStation` (ADR 0014) | done; calibrate per microscope |
 | Levels | "expansion a·x + b" | `LevelsTreatment` (black/white point) | equivalent: `a = 255/(w−b0)`, `b = −a·b0` |
 | Échelle overlay | per-TP flag `0x10` | `EchelleTreatment` | done; add per-TP "show échelle" setting? |
 | Length measurement | cursor tool | `Measurement` | done |
 | Calibration | 1 constant 288.65 px/mm × G | per-objective `pixelsPerMicron` | new model better; build reticle wizard (20 µm mire, 0.25 % check) |
-| **Phase % ("Pourcentage des constituants")** | `gere_calcul`, `denombre`, auto-threshold | **absent from CONTEXT.md** | decide: keep? (TP1 Aciers C10/C40/C75/C150 = pearlite fraction → %C) |
-| **Vickers HV0.5** | `0x44aad0`, `HV=0.927045/d²·10⁶` | **absent** | decide: keep? (Mesures Physiques) |
+| **Phase % ("Pourcentage des constituants")** | `gere_calcul`, `denombre`, auto-threshold | `analyzePhases` (ADR 0012) | done, bit-exact |
+| **Vickers HV0.5** | `0x44aad0`, `HV=0.927045/d²·10⁶` | `vickersHardness` (ADR 0012) | done, bit-exact |
 | Threshold overlay image | `creeImageSeuil` | — | becomes a `Treatment` if phase % kept |
 | Dept/TP/Échantillon | `DATA_METAL.txt`, `<PROFILE>.txt` | concepts in CONTEXT.md | importer for v2/v4 text formats |
 | Profiles by code | 11 codes incl. hidden `cricri` | ADR 0006 (install token, no per-user) | Department picker; drop codes |
@@ -61,8 +61,8 @@ All recovered from the binary (addresses in RE report §5), ready to reimplement
 5. Colour input → grey `(R+G+B)/3`, threshold on that grey, then 5×5 disk erode→dilate→dilate→erode (open+close) before counting.
 
 **Status:** all of §3 is now implemented in `microscope-app` (`phase_analysis`, `phase_overlay_treatment`, `vickers`), with legacy
-importers (`legacy_catalog`, `legacy_view`) and the `ICamera` layer (file + OpenCV backends; Motic backend waits on the SDK).
-101 test checks pass in WSL Debian (g++ / OpenCV 4.6), incl. exact parity on 5 legacy CTTM TIFFs.
+importers (`legacy_catalog`, `legacy_view`) and the `ICamera` layer (file + OpenCV backends; the Moticam A5 is UVC, so no Motic SDK backend is needed, ADR 0013).
+The legacy importers were later removed (ADR 0018). Phase-analysis parity runs in CI on in-repo crops of legacy views, and locally on 5 legacy CTTM TIFFs.
 6. HV0.5: `d_µm = ((d1+d2)/2) / pixelsPerMicron`; `HV = 0.927045·10⁶ / d_µm²`.
 
 ## 4. Migration assets already in hand

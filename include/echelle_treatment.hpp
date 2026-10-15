@@ -6,9 +6,9 @@
 namespace msapp {
 
 // Échelle (see CONTEXT.md): the visual scale-bar overlay rendered onto a
-// photo, built from its Calibration. A Treatment — it mutates the saved
-// photo (as opposed to Measurement, the separate ephemeral point-to-point
-// tool, which does not).
+// photo, built from its Calibration. A Treatment: drawn onto the rendered
+// photo, never into the stored original (ADR 0003) — unlike Measurement,
+// the ephemeral point-to-point tool, which draws nothing at all.
 //
 // Draws a horizontal bar sized to a "nice" round µm length (1/2/5 x 10^n —
 // standard microscopy scale-bar convention) close to image_width / 6,

@@ -12,35 +12,25 @@
 #include "phase_analysis.hpp"
 #include "phase_overlay_treatment.hpp"
 #include "treatment_factory.hpp"
+#include "test_support.hpp"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace msapp;
+using namespace msapp::test;
 namespace fs = std::filesystem;
 
 namespace {
-
-int g_failures = 0;
-
-void check(bool condition, const std::string& description) {
-    if (condition) {
-        std::cout << "  [PASS] " << description << "\n";
-    } else {
-        std::cout << "  [FAIL] " << description << "\n";
-        ++g_failures;
-    }
-}
-
-bool nearlyEqual(double a, double b, double eps) {
-    return std::abs(a - b) < eps;
-}
 
 // Dark discs (grey 60) on a light matrix (grey 200), lightly blurred so the
 // edges carry the gradient the auto-threshold relies on.
@@ -62,13 +52,32 @@ fs::path legacyDataDir(int argc, char** argv) {
 }
 
 struct Golden {
-    const char* file;
+    std::string file;
     int threshold;
     int tolerance;
     double dark;
     double light;
     double error;
 };
+
+// One line per image, exactly as tools/legacy_phase_reference.py prints it:
+// "<file>: threshold=95 tolerance=9 dark=13.282776 light=86.717224 error=1.599884"
+std::vector<Golden> readGoldenFile(const fs::path& path) {
+    std::vector<Golden> goldens;
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const auto colon = line.find(": ");
+        if (colon == std::string::npos) continue;
+        Golden g{line.substr(0, colon), 0, 0, 0.0, 0.0, 0.0};
+        if (std::sscanf(line.c_str() + colon + 2, "threshold=%d tolerance=%d dark=%lf light=%lf error=%lf", &g.threshold,
+                        &g.tolerance, &g.dark, &g.light, &g.error) == 5) {
+            goldens.push_back(g);
+        }
+    }
+    return goldens;
+}
 
 } // namespace
 
@@ -174,16 +183,14 @@ int main(int argc, char** argv) {
 
     // Always-on parity: 256x256 centre crops of three legacy views (low, mid
     // and high dark fraction), stored losslessly in the repo so CI checks the
-    // port without the 15 MB archive. Golden values from
-    // tools/legacy_phase_reference.py run on these exact PNGs.
+    // port without the 15 MB archive. The golden values are
+    // tools/legacy_phase_reference.py's own output on these PNGs, kept in
+    // crops_reference.txt; CI reruns the script and diffs it against that file.
     std::cout << "\n== Legacy parity: in-repo crops vs independent numpy reference ==\n";
     {
         const fs::path fixtures = fs::path(MSAPP_SOURCE_DIR) / "tests" / "fixtures" / "legacy";
-        const Golden crops[] = {
-            {"CTTM1Ech1Vue1_crop256.png", 95, 9, 13.282776, 86.717224, 1.599884},
-            {"CTTM1Ech2Vue1_crop256.png", 150, 13, 64.813232, 35.186768, 5.811310},
-            {"CTTM1Ech3Vue1_crop256.png", 161, 12, 91.578674, 8.421326, 1.897430},
-        };
+        const std::vector<Golden> crops = readGoldenFile(fixtures / "crops_reference.txt");
+        check(crops.size() == 3, "crops_reference.txt lists the three crops");
         for (const Golden& g : crops) {
             cv::Mat img = cv::imread((fixtures / g.file).string(), cv::IMREAD_UNCHANGED);
             if (img.empty()) {
@@ -232,7 +239,5 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "\n== " << (g_failures == 0 ? "ALL CHECKS PASSED" : std::to_string(g_failures) + " CHECK(S) FAILED")
-              << " ==\n";
-    return g_failures == 0 ? 0 : 1;
+    return summary();
 }

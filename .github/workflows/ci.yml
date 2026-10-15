@@ -25,7 +25,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev python3
+            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev python3 python3-numpy python3-opencv
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-Wall -Wextra"
@@ -39,8 +39,15 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-      - name: Check reference tool syntax
-        run: python3 -m py_compile tools/legacy_phase_reference.py
+      # ADR 0012: the numpy reference is a second, independent implementation
+      # of the legacy algorithm. Its output on the in-repo crops is the golden
+      # file test_phase_analysis reads, so a drift in either one fails here.
+      - name: Check numpy reference against the golden file
+        working-directory: tests/fixtures/legacy
+        run: |
+          python3 ../../../tools/legacy_phase_reference.py \
+            CTTM1Ech1Vue1_crop256.png CTTM1Ech2Vue1_crop256.png CTTM1Ech3Vue1_crop256.png > "$RUNNER_TEMP/reference.txt"
+          diff -u crops_reference.txt "$RUNNER_TEMP/reference.txt"
 
   windows:
     name: Windows (MSVC 2022, prebuilt OpenCV)
@@ -49,8 +56,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned: this job also builds the camera_probe bundle shipped to lab
+      # PCs, so OpenCV must not change between two runs. Bump on purpose.
       - name: Install OpenCV (official prebuilt binaries)
-        run: choco install opencv --no-progress -y
+        run: choco install opencv --version 4.13.0 --no-progress -y
 
       - name: Locate OpenCV
         run: |
