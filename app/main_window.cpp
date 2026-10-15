@@ -15,6 +15,8 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QGuiApplication>
@@ -28,6 +30,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QThread>
 #include <QTimeZone>
@@ -97,6 +100,50 @@ QString vueLabel(const std::filesystem::path& vue, bool principale) {
     return principale ? QStringLiteral("★ ") + label + MainWindow::tr(" — Vue principale") : label;
 }
 
+bool hasEchantillon(const Catalog& catalog) {
+    for (const auto& department : catalog.departments) {
+        for (const auto& tp : department.tps) {
+            if (!tp.echantillons.empty()) return true;
+        }
+    }
+    return false;
+}
+
+// Asks for the Échantillon to file `vue` under, starting from `start`;
+// empty when cancelled.
+std::optional<VueLocation> pickEchantillon(QWidget* parent, const Catalog& catalog,
+                                           const std::optional<VueLocation>& start, const std::filesystem::path& vue,
+                                           const QIcon& thumbnail) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(MainWindow::tr("Classer la Vue"));
+    auto* photo = new QLabel;
+    if (!thumbnail.isNull()) photo->setPixmap(thumbnail.pixmap(kThumbnailSize));
+    auto* picker = new LocationPicker;
+    picker->setCatalog(catalog);
+    if (start && !start->isUnsorted()) picker->setLocation(*start);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    QPushButton* ok = buttons->button(QDialogButtonBox::Ok);
+    ok->setText(MainWindow::tr("Classer"));
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->addWidget(new QLabel(MainWindow::tr("Vue : %1").arg(vueLabel(vue, false))));
+    layout->addWidget(photo);
+    layout->addWidget(new QLabel(MainWindow::tr("La ranger dans l'Échantillon :")));
+    layout->addWidget(picker);
+    layout->addWidget(buttons);
+
+    const auto refresh = [picker, ok] {
+        const auto to = picker->location();
+        ok->setEnabled(to && !to->isUnsorted());
+    };
+    QObject::connect(picker, &LocationPicker::locationChanged, &dialog, refresh);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    refresh();
+    if (dialog.exec() != QDialog::Accepted) return std::nullopt;
+    return picker->location();
+}
+
 // A small catalog to start from, written when a teacher opens a catalog
 // that doesn't exist yet.
 Catalog exampleCatalog() {
@@ -160,22 +207,32 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     instructions_ = new QLabel;
     instructions_->setWordWrap(true);
     instructions_->setStyleSheet(QStringLiteral("background: #e7f1ff; padding: 6px;"));
+    unsortedButton_ = new QPushButton;
+    unsortedButton_->setCheckable(true);
+    unsortedButton_->setToolTip(tr("Les Vues prises avant que ce poste ait un catalogue de TP, à ranger chacune dans "
+                                   "son Échantillon."));
     vuesTitle_ = new QLabel;
+    vuesTitle_->setWordWrap(true);
     vueList_ = new QListWidget;
     vueList_->setIconSize(kThumbnailSize);
     vueList_->setToolTip(tr("Double-cliquez une Vue pour l'ouvrir : traitements, mesures, analyse de phases."));
     auto* open = new QPushButton(tr("Ouvrir la Vue"));
     auto* principale = new QPushButton(tr("★ Choisir comme Vue principale"));
     principale->setToolTip(tr("La Vue principale de l'Échantillon est celle de la Fiche du TP."));
+    auto* file = new QPushButton(tr("Classer la Vue…"));
+    file->setToolTip(tr("Range la Vue choisie, avec ses traitements, dans un Échantillon du catalogue : une Vue non "
+                        "classée, ou prise sous le mauvais Échantillon."));
     auto* side = new QWidget;
     auto* sideLayout = new QVBoxLayout(side);
     sideLayout->addWidget(instructions_);
+    sideLayout->addWidget(unsortedButton_);
     sideLayout->addWidget(vuesTitle_);
     sideLayout->addWidget(vueList_, 1);
     auto* vueButtons = new QHBoxLayout;
     vueButtons->addWidget(open);
     vueButtons->addWidget(principale);
     sideLayout->addLayout(vueButtons);
+    sideLayout->addWidget(file);
     auto* dock = new QDockWidget(tr("TP et Vues"));
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setWidget(side);
@@ -200,9 +257,14 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     connect(captureButton_, &QPushButton::clicked, this, &MainWindow::capture);
     connect(principale, &QPushButton::clicked, this, &MainWindow::flagPrincipale);
     connect(open, &QPushButton::clicked, this, &MainWindow::openVue);
+    connect(file, &QPushButton::clicked, this, &MainWindow::fileSelectedVue);
     connect(vueList_, &QListWidget::itemActivated, this, &MainWindow::openVue);
+    connect(unsortedButton_, &QPushButton::toggled, this, &MainWindow::refreshVues);
     connect(grossissement_, &QComboBox::currentTextChanged, this, &MainWindow::refreshCaptureState);
     connect(picker_, &LocationPicker::locationChanged, this, [this] {
+        // Picking an Échantillon shows its Vues.
+        const QSignalBlocker blocker(unsortedButton_);
+        unsortedButton_->setChecked(false);
         refreshVues();
         refreshCaptureState();
     });
@@ -291,6 +353,11 @@ void MainWindow::fillGrossissements() {
 
 std::optional<VueLocation> MainWindow::location() const {
     return picker_->location();
+}
+
+std::optional<VueLocation> MainWindow::listedLocation() const {
+    if (unsortedButton_->isChecked()) return VueLocation::unsorted();
+    return location();
 }
 
 QString MainWindow::grossissement() const {
@@ -415,7 +482,24 @@ void MainWindow::refreshVues() {
     instructions_->setText(tp ? QString::fromStdString(tp->instructions) : QString());
     instructions_->setVisible(!instructions_->text().isEmpty());
 
-    const auto where = location();
+    // Without a catalog the picker itself is on Unsorted (ADR 0008); with
+    // one, the Vues still there are listed on request, until all are filed.
+    int unsorted = 0;
+    if (!setup_.catalog.empty()) {
+        try {
+            unsorted = static_cast<int>(store_.listVues(VueLocation::unsorted()).size());
+        } catch (const std::exception&) {
+            unsorted = 0;  // an unreadable bucket: nothing to offer
+        }
+    }
+    if (unsorted == 0 && unsortedButton_->isChecked()) {
+        const QSignalBlocker blocker(unsortedButton_);
+        unsortedButton_->setChecked(false);
+    }
+    unsortedButton_->setText(tr("Vues non classées (%n)", nullptr, unsorted));
+    unsortedButton_->setVisible(unsorted > 0);
+
+    const auto where = listedLocation();
     if (!where) {
         vuesTitle_->setText(tr("Ce TP n'a pas d'Échantillon : complétez le catalogue."));
         return;
@@ -429,8 +513,16 @@ void MainWindow::refreshVues() {
         vuesTitle_->setText(QString::fromStdString(e.what()));
         return;
     }
-    vuesTitle_->setText(where->isUnsorted() ? tr("Vues non classées : %n", nullptr, static_cast<int>(vues.size()))
-                                            : tr("Vues de l'Échantillon : %n", nullptr, static_cast<int>(vues.size())));
+    const int count = static_cast<int>(vues.size());
+    if (!where->isUnsorted()) {
+        vuesTitle_->setText(tr("Vues de l'Échantillon : %n", nullptr, count));
+    } else if (setup_.catalog.empty()) {
+        vuesTitle_->setText(tr("Vues non classées : %n", nullptr, count));
+    } else {
+        vuesTitle_->setText(
+            tr("Vues non classées : %n. Choisissez-en une, puis « Classer la Vue… » pour la ranger dans son Échantillon.",
+               nullptr, count));
+    }
     for (auto it = vues.rbegin(); it != vues.rend(); ++it) {  // newest first
         auto* item = new QListWidgetItem(vueLabel(*it, principale && *principale == *it), vueList_);
         item->setData(kPathRole, toQString(*it));
@@ -501,12 +593,15 @@ void MainWindow::captured(int generation, const std::filesystem::path& vue, cons
         return;
     }
     statusBar()->showMessage(tr("Vue enregistrée : %1").arg(toQString(vue)), 10000);
+    // Shows where the new Vue went.
+    const QSignalBlocker blocker(unsortedButton_);
+    unsortedButton_->setChecked(false);
     refreshVues();
 }
 
 void MainWindow::flagPrincipale() {
     const QListWidgetItem* item = vueList_->currentItem();
-    const auto where = location();
+    const auto where = listedLocation();
     if (item == nullptr || !where) {
         QMessageBox::information(this, tr("Vue principale"), tr("Sélectionnez d'abord une Vue dans la liste."));
         return;
@@ -522,7 +617,7 @@ void MainWindow::flagPrincipale() {
 
 void MainWindow::openVue() {
     const QListWidgetItem* item = vueList_->currentItem();
-    const auto where = location();
+    const auto where = listedLocation();
     if (item == nullptr || !where) return;
     try {
         Vue vue = Vue::load(toPath(item->data(kPathRole).toString()));
@@ -532,6 +627,46 @@ void MainWindow::openVue() {
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Vue illisible"), QString::fromStdString(e.what()));
     }
+}
+
+void MainWindow::fileSelectedVue() {
+    const QListWidgetItem* item = vueList_->currentItem();
+    if (item == nullptr) {
+        QMessageBox::information(this, tr("Classer la Vue"), tr("Sélectionnez d'abord une Vue dans la liste."));
+        return;
+    }
+    if (!hasEchantillon(setup_.catalog)) {
+        QMessageBox::information(this, tr("Classer la Vue"),
+                                 tr("Le catalogue de TP n'a encore aucun Échantillon où ranger la Vue : complétez-le "
+                                    "(Poste › Modifier le catalogue de TP), puis rechargez-le."));
+        return;
+    }
+    const std::filesystem::path vue = toPath(item->data(kPathRole).toString());
+    // An open Vue would save its next Treatment beside the old path.
+    for (VueWindow* window : findChildren<VueWindow*>()) {
+        if (window->isVisible() && window->vuePath() == vue) {
+            QMessageBox::information(this, tr("Classer la Vue"),
+                                     tr("Cette Vue est ouverte : fermez sa fenêtre avant de la classer."));
+            window->raise();
+            window->activateWindow();
+            return;
+        }
+    }
+
+    const auto to = pickEchantillon(this, setup_.catalog, location(), vue, item->icon());
+    if (!to) return;
+    try {
+        store_.fileVue(vue, *to);
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Classer la Vue"), QString::fromStdString(e.what()));
+        refreshVues();
+        return;
+    }
+    statusBar()->showMessage(tr("Vue rangée dans %1 › %2 › %3")
+                                 .arg(QString::fromStdString(to->department), QString::fromStdString(to->tp),
+                                      QString::fromStdString(to->echantillon)),
+                             10000);
+    refreshVues();
 }
 
 void MainWindow::measureWhiteReference() {
@@ -682,7 +817,7 @@ void MainWindow::reloadCatalog() {
 
 void MainWindow::openVueFolder() {
     std::filesystem::path folder = store_.root();
-    if (const auto where = location()) {
+    if (const auto where = listedLocation()) {
         try {
             if (std::filesystem::is_directory(store_.folder(*where))) folder = store_.folder(*where);
         } catch (const std::exception&) {

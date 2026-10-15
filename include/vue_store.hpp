@@ -66,6 +66,27 @@ public:
     // Unflags the Vue principale of `location`, if any. The Vue stays.
     void clearPrincipale(const VueLocation& location) const;
 
+    // Files `vue`, a Vue of this store, under the Échantillon `to` and
+    // returns its new path: an Unsorted Vue once its TP exists (ADR 0008),
+    // or one captured under the wrong Échantillon. Its files move together:
+    // the image and every file named after it — the sidecar and the files a
+    // sidecar was set aside to (<image>.json.unreadable, .mismatched, ...).
+    // The file name, which starts with the capture time, is kept so the Vue
+    // lists in capture order there; when another file already uses that
+    // name in `to`, the Vue gets a fresh name from newVuePath() instead,
+    // with its own extension. Nothing is ever overwritten (ADR 0004).
+    // A Vue already filed under `to` stays where it is. A Vue principale is
+    // unflagged in its old Échantillon; the flag does not follow it.
+    //
+    // The sidecar and set-aside files move first and the image last, so the
+    // Vue never shows in `to` without its Treatments. When a move fails, the
+    // files already moved are moved back and std::runtime_error says why —
+    // and where each file is, should moving back fail too. Throws
+    // std::invalid_argument, moving nothing, when `vue` is not an existing
+    // Vue image in one of this store's folders, or `to` is Unsorted or
+    // refused by folder().
+    std::filesystem::path fileVue(const std::filesystem::path& vue, const VueLocation& to) const;
+
 private:
     std::filesystem::path root_;
 };

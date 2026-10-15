@@ -43,7 +43,9 @@ struct AppSetup {
 // Grossissement's Calibration when it holds for the camera's frame size
 // (ADR 0015) — otherwise uncalibrated, never refused, and the banner says
 // why. The side panel shows the TP's instructions and the Échantillon's
-// Vues, one of them flagged Vue principale (ADR 0016). The Poste menu
+// Vues, one of them flagged Vue principale (ADR 0016), or the Unsorted
+// Vues, each filed into its Échantillon with Classer la Vue (ADR 0008) —
+// as is a Vue captured under the wrong Échantillon. The Poste menu
 // measures the White reference (ADR 0014) and calibrates a Grossissement on
 // the mire.
 //
@@ -68,7 +70,7 @@ private:
     // The Grossissement's Calibration against the camera's frame size, and
     // whether a capture can start.
     void refreshCaptureState();
-    // The TP's instructions and the picked Échantillon's Vues.
+    // The TP's instructions and the listed Vues.
     void refreshVues();
     void loadNextThumbnail();
 
@@ -76,6 +78,7 @@ private:
     void captured(int generation, const std::filesystem::path& vue, const QString& error);
     void flagPrincipale();
     void openVue();
+    void fileSelectedVue();
     void generateFiche();
     void measureWhiteReference();
     void calibrateGrossissement();
@@ -86,6 +89,9 @@ private:
     bool saveConfig();
 
     std::optional<VueLocation> location() const;
+    // Whose Vues the side panel lists: the picked location, or Unsorted
+    // while Vues non classées is on.
+    std::optional<VueLocation> listedLocation() const;
     QString grossissement() const;
     void fillGrossissements();
 
@@ -102,6 +108,9 @@ private:
     QLabel* calibrationLabel_ = nullptr;
     QPushButton* captureButton_ = nullptr;
     QLabel* instructions_ = nullptr;
+    // With a catalog the picker offers only Échantillons: this lists the
+    // Unsorted Vues instead, while there are any.
+    QPushButton* unsortedButton_ = nullptr;
     QLabel* vuesTitle_ = nullptr;
     QListWidget* vueList_ = nullptr;
     QLabel* modeLabel_ = nullptr;

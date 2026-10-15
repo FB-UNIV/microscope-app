@@ -2,18 +2,23 @@
 //   As a student, every photo I capture lands in my Échantillon's folder
 //   under a name nobody else's capture can take, even when two of us click
 //   in the same second; before any TP exists on this workstation, my photos
-//   still save, into Unsorted (ADR 0008). As a teacher, I can list the Vues
-//   of one Échantillon in the order they were taken.
+//   still save, into Unsorted (ADR 0008), and once the TP exists I file
+//   each one into its Échantillon with its Treatments. As a teacher, I can
+//   list the Vues of one Échantillon in the order they were taken.
 
+#include "levels_treatment.hpp"
 #include "vue.hpp"
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
 #include "test_support.hpp"
 
 #include <opencv2/core.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -26,6 +31,20 @@ namespace {
 
 void touch(const fs::path& path) {
     std::ofstream(path, std::ios::binary) << "x";
+}
+
+fs::path withSuffix(fs::path path, const std::string& suffix) {
+    path += suffix;
+    return path;
+}
+
+std::string readAll(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+bool lists(const std::vector<fs::path>& vues, const fs::path& vue) {
+    return std::find(vues.begin(), vues.end(), vue) != vues.end();
 }
 
 std::string folderOf(const std::string& name) {
@@ -179,6 +198,135 @@ int main() {
         check(!store.principale(ech) && fs::exists(first.imagePath()), "clearing unflags it; the Vue stays");
         store.clearPrincipale(ech);
         check(!store.principale(ech), "clearing when none is flagged is fine");
+    }
+
+    std::cout << "\n== fileVue: an Unsorted Vue filed into its Échantillon (ADR 0008) ==\n";
+    const cv::Mat frame(48, 64, CV_8UC3, cv::Scalar(30, 120, 200));
+    const VueLocation tp5{"GMP", "TP 5", "Ac1: XC10"};
+    {
+        Vue vue = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()), CaptureInfo{},
+                               Calibration{"x10", 2.5, 64, 48});
+        vue.addTreatment(std::make_unique<LevelsTreatment>(20, 230));
+        const cv::Mat rendered = vue.render();
+        const fs::path old = vue.imagePath();
+        touch(withSuffix(vue.sidecarPath(), ".unreadable"));
+        touch(withSuffix(vue.sidecarPath(), ".mismatched.2"));
+
+        const fs::path filed = store.fileVue(old, tp5);
+        check(filed == store.folder(tp5) / old.filename(),
+              "the Vue keeps its file name — its capture time, so its place in the list");
+        check(!fs::exists(old) && !fs::exists(withSuffix(old, ".json")) &&
+                  !fs::exists(withSuffix(old, ".json.unreadable")) && !fs::exists(withSuffix(old, ".json.mismatched.2")),
+              "nothing of it is left in Unsorted");
+        check(fs::exists(filed) && fs::exists(withSuffix(filed, ".json")) &&
+                  fs::exists(withSuffix(filed, ".json.unreadable")) && fs::exists(withSuffix(filed, ".json.mismatched.2")),
+              "the image, its sidecar and its set-aside files moved together");
+        check(!lists(store.listVues(VueLocation::unsorted()), old) &&
+                  store.listVues(tp5) == std::vector<fs::path>{filed},
+              "it lists under its Échantillon, no longer in Unsorted");
+
+        const Vue reloaded = Vue::load(filed);
+        check(!reloaded.sidecarError() && reloaded.treatmentCount() == vue.treatmentCount() &&
+                  reloaded.calibration() && nearlyEqual(reloaded.calibration()->pixelsPerMicron, 2.5) &&
+                  cv::norm(reloaded.render(), rendered, cv::NORM_INF) == 0,
+              "the filed Vue loads with its Treatments and Calibration, rendering as before");
+
+        check(store.fileVue(filed, tp5) == filed && fs::exists(filed), "filing a Vue where it already is changes nothing");
+    }
+    {
+        // Another file already has the name there, e.g. a copy of this Vue.
+        const Vue png = Vue::capture(frame, store.folder(VueLocation::unsorted()) / "imported.png");
+        const fs::path taken = store.folder(tp5) / "imported.png";
+        std::ofstream(taken, std::ios::binary) << "earlier";
+        const fs::path filed = store.fileVue(png.imagePath(), tp5);
+        check(filed != taken && filed.parent_path() == store.folder(tp5) && filed.extension() == ".png" &&
+                  fs::exists(filed) && readAll(taken) == "earlier",
+              "a name already taken is never overwritten: a fresh one, keeping the image's extension");
+
+        const Vue orphaned = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()));
+        const fs::path leftover = store.folder(tp5) / (orphaned.imagePath().filename().string() + ".json");
+        std::ofstream(leftover, std::ios::binary) << "someone else's";
+        const fs::path refiled = store.fileVue(orphaned.imagePath(), tp5);
+        check(refiled.filename() != orphaned.imagePath().filename() && readAll(leftover) == "someone else's",
+              "nor is a sidecar left there without its image taken over");
+    }
+    {
+        const Vue vue = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()));
+        const fs::path unsortedFolder = store.folder(VueLocation::unsorted());
+        touch(unsortedFolder / "notes.txt");
+        const auto refused = [&](const fs::path& path, const VueLocation& to) {
+            return !throwsWith<std::invalid_argument>([&] { store.fileVue(path, to); }).empty();
+        };
+        check(refused(unsortedFolder / "missing.tiff", tp5), "a file that doesn't exist is refused");
+        check(refused(unsortedFolder / "notes.txt", tp5) && refused(vue.sidecarPath(), tp5) &&
+                  fs::exists(unsortedFolder / "notes.txt"),
+              "a file that isn't a Vue image (a note, a sidecar) is refused");
+        check(refused(vue.imagePath(), VueLocation::unsorted()) && refused(vue.imagePath(), {"GMP", "", "A"}),
+              "filing into Unsorted, or under half a location, is refused");
+        fs::create_directories(dir / "elsewhere");
+        const Vue outside = Vue::capture(frame, dir / "elsewhere" / "photo.tiff");
+        check(refused(outside.imagePath(), tp5) && fs::exists(outside.imagePath()),
+              "a photo outside the store is refused, not moved in");
+        check(fs::exists(vue.imagePath()) && lists(store.listVues(VueLocation::unsorted()), vue.imagePath()),
+              "a refused Vue stays where it was");
+    }
+
+    std::cout << "\n== fileVue: a misfiled Vue principale ==\n";
+    {
+        const VueLocation wrong{"GMP", "TP 6", "Ac1"};
+        const VueLocation right{"GMP", "TP 6", "Ac2"};
+        const Vue first = Vue::capture(frame, store.newVuePath(wrong));
+        const Vue second = Vue::capture(frame, store.newVuePath(wrong));
+        store.setPrincipale(wrong, first.imagePath());
+
+        store.fileVue(second.imagePath(), right);
+        check(store.principale(wrong) == first.imagePath(), "filing another Vue away leaves the flag alone");
+        check(store.fileVue(first.imagePath(), wrong) == first.imagePath() && store.principale(wrong) == first.imagePath(),
+              "nor does filing the Vue principale where it already is");
+
+        const fs::path moved = store.fileVue(first.imagePath(), right);
+        check(fs::exists(moved) && !store.principale(wrong) && !fs::exists(store.folder(wrong) / "vue-principale.json"),
+              "the Vue principale filed elsewhere is unflagged in its old Échantillon");
+        check(!store.principale(right), "and the flag does not follow it: the teacher picks again there");
+    }
+
+    std::cout << "\n== fileVue: a move that fails half-way ==\n";
+    {
+        Vue vue = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()));
+        vue.addTreatment(std::make_unique<LevelsTreatment>(10, 200));
+        const fs::path image = vue.imagePath();
+        const fs::path sidecar = vue.sidecarPath();
+        const fs::path target = store.folder(tp5) / image.filename();
+#ifdef _WIN32
+        // A photo open in another program can't be moved on Windows: the
+        // sidecar moves first, then the image fails.
+        std::ifstream held(image, std::ios::binary);
+        const std::string error = throwsWith<std::runtime_error>([&] { store.fileVue(image, tp5); });
+        check(!error.empty() && error.find("stays in") != std::string::npos, "the failed move says so");
+        check(fs::exists(image) && readAll(sidecar).find("levels") != std::string::npos && !fs::exists(target) &&
+                  !fs::exists(withSuffix(target, ".json")),
+              "the sidecar already moved comes back: the Vue stays whole in Unsorted");
+        held.close();
+        check(store.fileVue(image, tp5) == target && Vue::load(target).treatmentCount() == 1,
+              "once the photo is closed, filing it works");
+#else
+        // A folder it can't be moved into: nothing moves.
+        const VueLocation locked{"GMP", "TP 7", "Locked"};
+        const fs::path lockedFolder = store.folder(locked);
+        fs::create_directories(lockedFolder);
+        fs::permissions(lockedFolder, fs::perms::owner_read | fs::perms::owner_exec, fs::perm_options::replace);
+        if (std::ofstream(lockedFolder / "probe")) {
+            std::cout << "  [SKIP] running as root: a read-only folder can't refuse a move\n";
+        } else {
+            const std::string error = throwsWith<std::runtime_error>([&] { store.fileVue(image, locked); });
+            check(!error.empty() && error.find("stays in") != std::string::npos, "the failed move says so");
+            check(fs::exists(image) && fs::exists(sidecar) && store.listVues(locked).empty(),
+                  "the Vue stays whole in Unsorted");
+        }
+        fs::permissions(lockedFolder, fs::perms::owner_all, fs::perm_options::replace);
+        check(store.fileVue(image, tp5) == target && Vue::load(target).treatmentCount() == 1,
+              "filed into a folder it can be moved to, it works");
+#endif
     }
 
     std::cout << "\n== Where Vues go by default ==\n";

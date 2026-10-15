@@ -23,6 +23,9 @@ public:
     // Keeps the current pick when the new catalog still has it.
     void setCatalog(const Catalog& catalog);
     const Catalog& catalog() const { return catalog_; }
+    // Picks `location`'s Department, TP and Échantillon, as far as the
+    // catalog has them.
+    void setLocation(const VueLocation& location);
 
     // Where the next Vue goes: Unsorted when the catalog is empty; empty when
     // the picked TP has no Échantillon to file it under.
