@@ -22,6 +22,9 @@ struct WorkstationConfig {
     // setCalibration(): saveWorkstationConfig() refuses a list it would not
     // load back.
     std::vector<Calibration> calibrations;
+    // Absolute folder the VueStore files Vues under; empty = defaultVueRoot().
+    // Set it to put this workstation's Vues on another drive.
+    std::filesystem::path vueRoot;
 
     // The Calibration of `grossissement`, whatever frame size it was
     // measured at; empty when that objective was never calibrated here.
