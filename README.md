@@ -70,6 +70,8 @@ tests/fixtures/      Real legacy Department catalogs (GMP1.txt, CTTM.txt) used b
    `camera_probe` and `camera_probe --api dshow`, then retry with
    `--size WIDTHxHEIGHT` / `--mjpg` until the full sensor resolution comes
    back; record the working capture API, size and pixel format (ADR 0013).
+   Step-by-step guide, including where to download the ready-to-run
+   Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
 2. Qt `MainWindow`: live preview + capture button, wired to `ICamera` +
    `Vue::capture`, using the camera settings found in step 1.
 3. Calibration wizard against the 20 µm mire (legacy procedure: repeat

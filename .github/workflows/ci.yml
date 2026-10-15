@@ -72,3 +72,43 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+      # Ready-to-run camera_probe for lab PCs (docs/hardware/camera-probe.md):
+      # exe + OpenCV DLL + MSVC runtime DLLs side by side, so it runs from a
+      # folder without admin rights or a VC++ redistributable install.
+      - name: Bundle camera_probe
+        run: |
+          $dist = "dist\camera_probe"
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item build\Release\camera_probe.exe $dist
+          $runtime = Get-ChildItem "$env:OpenCV_DIR\x64" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          Get-ChildItem "$($runtime.FullName)\bin\opencv_world*.dll" |
+            Where-Object { $_.Name -notmatch 'd\.dll$' } | Copy-Item -Destination $dist
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $crt = Get-ChildItem "$vs\VC\Redist\MSVC" -Directory | Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $crt) { throw "MSVC x64 CRT redist folder not found" }
+          Copy-Item "$crt\*.dll" $dist
+          Copy-Item docs\hardware\camera-probe.md "$dist\README.md"
+          Get-ChildItem $dist | Format-Table Name, Length
+
+      # Prove the bundle is self-contained: OpenCV taken off PATH, exe run from
+      # the bundle. The runner has no camera, so success here is exit code 1
+      # with "no camera delivered a frame"; a missing DLL would crash instead.
+      - name: Smoke-test camera_probe bundle
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike 'C:\tools\opencv*' }) -join ';'
+          $out = & .\dist\camera_probe\camera_probe.exe --max-index 1 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Output $out
+          if ($code -ne 1 -or $out -notmatch 'no camera delivered a frame') { throw "unexpected result, exit code $code" }
+          exit 0
+
+      - name: Upload camera_probe bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: camera_probe-windows
+          path: dist/camera_probe
+          if-no-files-found: error
+          retention-days: 90
