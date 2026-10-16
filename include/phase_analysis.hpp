@@ -3,6 +3,8 @@
 #include <opencv2/core.hpp>
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <string>
 
 namespace msapp {
 
@@ -60,5 +62,23 @@ cv::Mat legacySmooth(const cv::Mat& grey);
 // as-is; colour input is converted with legacyGrey, thresholded, smoothed
 // with legacySmooth, then counted on the smoothed image.
 PhaseAnalysis analyzePhases(const cv::Mat& image);
+
+// Phase analysis on a zone of the Vue (#55): samples often carry dust,
+// inclusions or scratches that would count as a phase, so the operator can
+// leave them out — as long as the zone still holds enough grains to mean
+// something. The smallest zone accepted, as a share of the image area. A
+// placeholder until the teacher gives a figure.
+constexpr double kMinPhaseZoneFraction = 0.15;
+
+// Why `zone` can't be analysed on an image of `size`: not inside it, or
+// smaller than kMinPhaseZoneFraction of it. Empty when it can.
+std::optional<std::string> phaseZoneProblem(const cv::Rect& zone, const cv::Size& size);
+
+// analyzePhases() of `zone` alone: the threshold is found and the phases
+// counted on that crop, exactly as if it were the whole photo. A zone
+// covering the whole image gives analyzePhases(image), still bit-exact with
+// the legacy app (ADR 0012). Throws std::invalid_argument with
+// phaseZoneProblem()'s reason.
+PhaseAnalysis analyzePhasesInZone(const cv::Mat& image, const cv::Rect& zone);
 
 } // namespace msapp

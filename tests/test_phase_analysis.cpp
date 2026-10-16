@@ -209,6 +209,77 @@ int main(int argc, char** argv) {
         }
     }
 
+    std::cout << "\n== Phase analysis on a zone: leaving impurities out (#55) ==\n";
+    {
+        const fs::path fixtures = fs::path(MSAPP_SOURCE_DIR) / "tests" / "fixtures" / "legacy";
+        const cv::Mat img = cv::imread((fixtures / "CTTM1Ech2Vue1_crop256.png").string(), cv::IMREAD_UNCHANGED);
+        check(!img.empty(), "a legacy crop to work on");
+        const cv::Rect zone(40, 60, 160, 128);  // 31 % of 256x256
+        const PhaseAnalysis inZone = analyzePhasesInZone(img, zone);
+        const PhaseAnalysis onCrop = analyzePhases(img(zone).clone());
+        check(inZone.threshold.threshold == onCrop.threshold.threshold &&
+                  inZone.threshold.tolerance == onCrop.threshold.tolerance &&
+                  inZone.fractions.darkPercent == onCrop.fractions.darkPercent &&
+                  inZone.fractions.errorPercent == onCrop.fractions.errorPercent,
+              "a zone is analysed exactly as if it were the whole photo");
+        const PhaseAnalysis whole = analyzePhasesInZone(img, cv::Rect(0, 0, img.cols, img.rows));
+        const PhaseAnalysis legacy = analyzePhases(img);
+        check(whole.threshold.threshold == legacy.threshold.threshold &&
+                  whole.fractions.darkPercent == legacy.fractions.darkPercent,
+              "a zone covering the whole image gives the legacy result");
+
+        // A dust blob in the middle of a two-phase sample counts as dark
+        // phase; a zone beside it does not see it.
+        cv::Mat dusty = synthesizeTwoPhaseSample();
+        const double darkBefore = analyzePhases(dusty).fractions.darkPercent;
+        cv::circle(dusty, cv::Point(450, 200), 90, cv::Scalar(30), cv::FILLED);
+        const double darkWithDust = analyzePhases(dusty).fractions.darkPercent;
+        const cv::Rect besideDust(0, 0, 300, 400);
+        const double darkBeside = analyzePhasesInZone(dusty, besideDust).fractions.darkPercent;
+        const double darkBesideClean = analyzePhasesInZone(synthesizeTwoPhaseSample(), besideDust).fractions.darkPercent;
+        check(darkWithDust > darkBefore + 5.0 && darkBeside == darkBesideClean,
+              "dust inflates the dark phase of the whole photo, not of a zone that leaves it out");
+
+        check(!phaseZoneProblem(zone, img.size()), "a zone of 31 % is accepted");
+        const auto tooSmall = phaseZoneProblem(cv::Rect(0, 0, 90, 90), img.size());
+        check(tooSmall && tooSmall->find("12 %") != std::string::npos && tooSmall->find("15 %") != std::string::npos,
+              "a zone under 15 % of the image is refused, saying how much it covers");
+        check(phaseZoneProblem(cv::Rect(200, 0, 100, 200), img.size()) &&
+                  phaseZoneProblem(cv::Rect(-1, 0, 100, 200), img.size()) &&
+                  phaseZoneProblem(cv::Rect(0, 0, 0, 200), img.size()),
+              "a zone reaching outside the image, or empty, is refused");
+        check(!throwsWith<std::invalid_argument>([&] { analyzePhasesInZone(img, cv::Rect(0, 0, 90, 90)); }).empty(),
+              "analyzePhasesInZone refuses what phaseZoneProblem names");
+
+        cv::Mat photo(100, 200, CV_8UC3, cv::Scalar(10, 120, 230));
+        const cv::Rect mapped(50, 20, 100, 60);
+        const PhaseOverlayTreatment zoned(127, mapped);
+        const cv::Mat out = zoned.apply(photo);
+        const cv::Mat full = PhaseOverlayTreatment(127).apply(photo);
+        check(out.at<cv::Vec3b>(5, 5) == photo.at<cv::Vec3b>(5, 5) &&
+                  out.at<cv::Vec3b>(95, 195) == photo.at<cv::Vec3b>(95, 195),
+              "outside the zone the photo shows as it is");
+        check(out.at<cv::Vec3b>(50, 100) == full.at<cv::Vec3b>(50, 100), "inside, the same map as without a zone");
+        check(out.at<cv::Vec3b>(20, 100) == cv::Vec3b(255, 255, 0), "the zone is outlined in cyan");
+        check(photo.at<cv::Vec3b>(50, 100) == cv::Vec3b(10, 120, 230), "the input is left untouched");
+
+        const nlohmann::json params = zoned.paramsToJson();
+        auto rebuilt = TreatmentFactory::instance().create("phase_overlay", params);
+        const auto* back = dynamic_cast<const PhaseOverlayTreatment*>(rebuilt.get());
+        check(params.at("zone").at("width") == 100 && back && back->zone() == mapped && back->threshold() == 127,
+              "the zone round-trips through the sidecar");
+        auto old = TreatmentFactory::instance().create("phase_overlay", {{"threshold", 127}});
+        const auto* oldOverlay = dynamic_cast<const PhaseOverlayTreatment*>(old.get());
+        check(!PhaseOverlayTreatment(127).paramsToJson().contains("zone") && oldOverlay && !oldOverlay->zone(),
+              "without a zone the sidecar is written as before, and an old one maps the whole photo");
+        check(!zoned.frameMismatch(200, 100) && zoned.frameMismatch(120, 100) &&
+                  zoned.frameMismatch(120, 100)->find("reaches past") != std::string::npos,
+              "a zone reaching past a smaller image is a frame mismatch, so a Vue drops it rather than failing");
+        check(!throwsWith<std::invalid_argument>([] { PhaseOverlayTreatment(127, cv::Rect(0, 0, 0, 10)); }).empty() &&
+                  !throwsWith<std::invalid_argument>([] { PhaseOverlayTreatment(127, cv::Rect(-5, 0, 10, 10)); }).empty(),
+              "an empty zone, or one starting outside the image, is refused");
+    }
+
     std::cout << "\n== Legacy parity: CTTM TIFFs vs independent numpy reference ==\n";
     const fs::path dataDir = legacyDataDir(argc, argv);
     if (dataDir.empty() || !fs::exists(dataDir / "CTTM1Ech1Vue1.tif")) {

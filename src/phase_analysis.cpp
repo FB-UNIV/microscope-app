@@ -266,4 +266,29 @@ PhaseAnalysis analyzePhases(const cv::Mat& image) {
     return analysis;
 }
 
+std::optional<std::string> phaseZoneProblem(const cv::Rect& zone, const cv::Size& size) {
+    const auto describe = [](const cv::Rect& r) {
+        return std::to_string(r.width) + "x" + std::to_string(r.height) + " at (" + std::to_string(r.x) + ", " +
+               std::to_string(r.y) + ")";
+    };
+    const std::string image = std::to_string(size.width) + "x" + std::to_string(size.height);
+    if (zone.width <= 0 || zone.height <= 0 || (zone & cv::Rect(cv::Point(0, 0), size)) != zone) {
+        return "the zone " + describe(zone) + " is not inside the " + image + " image";
+    }
+    const double fraction = static_cast<double>(zone.area()) / (static_cast<double>(size.width) * size.height);
+    if (fraction < kMinPhaseZoneFraction) {
+        return "the zone " + describe(zone) + " covers " + std::to_string(static_cast<int>(fraction * 100.0)) +
+               " % of the image; at least " + std::to_string(static_cast<int>(kMinPhaseZoneFraction * 100.0)) +
+               " % is needed for enough grains";
+    }
+    return std::nullopt;
+}
+
+PhaseAnalysis analyzePhasesInZone(const cv::Mat& image, const cv::Rect& zone) {
+    if (auto why = phaseZoneProblem(zone, image.size())) {
+        throw std::invalid_argument("analyzePhasesInZone: " + *why);
+    }
+    return analyzePhases(image(zone));
+}
+
 } // namespace msapp
