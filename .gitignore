@@ -1,3 +1,4 @@
 build/
 build-cov/
 tests/output/
+/camera_probe/
