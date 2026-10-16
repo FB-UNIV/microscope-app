@@ -52,7 +52,9 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
 
     auto* help = new QLabel(tr("Molette : zoom. Glisser : déplacer. Cliquez un trait de la mire, puis le trait "
                                "situé autant de périodes de 20 µm plus loin, le plus loin possible. Recommencez "
-                               "jusqu'à ce que deux lectures s'accordent à 0,25 %."));
+                               "jusqu'à ce que deux lectures s'accordent à 0,25 %.\n\nUn seul objectif suffit : "
+                               "les autres grossissements en sont déduits. Calibrer aussi un autre objectif sur la "
+                               "mire le rend plus précis ; les autres sont alors déduits du dernier calibré."));
     help->setWordWrap(true);
 
     auto* side = new QWidget;

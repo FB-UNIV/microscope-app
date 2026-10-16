@@ -450,22 +450,31 @@ void MainWindow::refreshBanner() {
 void MainWindow::refreshCaptureState() {
     const QString name = grossissement();
     captureWarning_.clear();
-    const auto stored = setup_.config.calibration(name.toStdString());
+    // Its own mire Calibration, or one derived from the objective measured
+    // last (ADR 0020).
+    const auto stored = setup_.config.effectiveCalibration(name.toStdString());
     if (!stored) {
         calibrationLabel_->setText(tr(" non calibré "));
         captureWarning_ = tr("%1 n'est pas calibré sur ce poste : les Vues seront prises sans Échelle, et sans "
-                             "mesure possible. Menu Poste › Calibrer un grossissement.")
+                             "mesure possible. Menu Poste › Calibrer un grossissement : un seul objectif calibré "
+                             "sur la mire suffit, les autres en sont déduits.")
                               .arg(name);
     } else {
-        calibrationLabel_->setText(tr(" %1 px/µm, image %2x%3 ")
+        const QString origin = stored->isDerived()
+                                   ? tr(" (déduit de %1)").arg(QString::fromStdString(stored->derivedFrom))
+                                   : QString();
+        calibrationLabel_->setText(tr(" %1 px/µm%2, image %3x%4 ")
                                        .arg(stored->pixelsPerMicron, 0, 'f', 4)
+                                       .arg(origin)
                                        .arg(stored->frameWidth)
                                        .arg(stored->frameHeight));
         if (frameSize_.isValid() && !stored->fitsFrame(frameSize_.width(), frameSize_.height())) {
             // ADR 0015: never applied to another frame size, never rescaled.
+            const QString measured =
+                QString::fromStdString(stored->isDerived() ? stored->derivedFrom : stored->grossissement);
             captureWarning_ = tr("%1 a été calibré en %2x%3 mais la caméra fournit %4x%5 : les Vues seront prises "
                                  "sans Calibration. Reconnectez la caméra pour retrouver ce mode, ou recalibrez %1.")
-                                  .arg(name)
+                                  .arg(measured)
                                   .arg(stored->frameWidth)
                                   .arg(stored->frameHeight)
                                   .arg(frameSize_.width())
@@ -737,7 +746,9 @@ void MainWindow::calibrateGrossissement() {
     }
     setup_.config.setCalibration(*result);
     if (saveConfig()) {
-        statusBar()->showMessage(tr("Calibration de %1 enregistrée.").arg(QString::fromStdString(result->grossissement)),
+        statusBar()->showMessage(tr("Calibration de %1 enregistrée ; les grossissements non calibrés sur la mire en "
+                                    "sont déduits.")
+                                     .arg(QString::fromStdString(result->grossissement)),
                                  10000);
     }
     fillGrossissements();
