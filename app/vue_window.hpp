@@ -32,7 +32,8 @@ class ImageView;
 // - Measurement and Dureté Vickers by clicking on the photo, with its own
 //   Calibration (ADR 0015) — refused on an uncalibrated Vue;
 // - Phase analysis: CALCUL, the percentages, the histogram with the Seuil;
-// - flagging it as its Échantillon's Vue principale (ADR 0016).
+// - flagging it as its Échantillon's Vue principale (ADR 0016);
+// - asking the main window to delete it (to the Corbeille).
 class VueWindow : public QMainWindow {
     Q_OBJECT
 
@@ -43,6 +44,8 @@ public:
 
 signals:
     void principaleChanged();
+    // "Supprimer la Vue…" was clicked; the main window confirms and deletes.
+    void deleteRequested();
 
 private:
     enum class Tool { Length, Vickers };
