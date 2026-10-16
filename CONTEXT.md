@@ -64,6 +64,10 @@ _Avoid_: Photo (a Vue is the photo in its TP/Échantillon context, not just an i
 A fallback bucket for Vues captured before a workstation has ever synced real Department/TP/Échantillon structure (first launch, offline). Deliberately breaks the normal Vue→Échantillon invariant — filed properly once the machine syncs.
 _Avoid_: none — this is intentionally the escape hatch, not a normal state
 
+**Corbeille**:
+Where a deleted Vue goes, with its Treatments: a `Corbeille` folder in the Vue folder, under the same Department/TP/Échantillon folders it was filed in. Nothing is erased (ADR 0004), so a Vue deleted by mistake is recovered by moving its files back; the app lists nothing from it. A deleted Vue principale is unflagged.
+_Avoid_: Trash, Bin (English UI words), Supprimées
+
 **Fiche**:
 A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar, laid out on as few A4 pages as fit (ADR 0016). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
 _Avoid_: Report (less specific), Print (that's the action, not the artifact)
