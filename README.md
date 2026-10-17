@@ -98,9 +98,14 @@ one.
   Double-click opens a Vue: Levels with a live preview, the Échelle,
   removing a Treatment (all saved in the sidecar at once), *Mesurer une
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
-  default), and *Analyse de phases* (CALCUL, percentages, histogram with
-  the Seuil, the phase map as a Treatment). *Choisir une zone…* (two
-  clicks, opposite corners) restricts CALCUL and the map to a zone that
+  default; the active tool stays pressed and says what to click next,
+  Échap puts it away; every point — a yellow ring — can be dragged
+  afterwards to correct a reading, its value following live, a right-click
+  on one deletes its measurement, and Backspace takes back the last point;
+  the cursor is a crosshair, and dragging elsewhere pans), and
+  *Analyse de phases* (CALCUL, percentages, histogram with
+  the Seuil, the phase map as a Treatment). *Choisir une zone…* (drag a
+  rectangle, or click two opposite corners) restricts CALCUL and the map to a zone that
   leaves dust and inclusions out; any zone of at least 5x5 pixels at the
   legacy scale is accepted (no size rule until the teacher sets one, #64),
   and it is saved with the map, outlined in cyan. A 4K photo is analysed at
