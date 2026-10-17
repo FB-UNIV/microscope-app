@@ -280,6 +280,12 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     });
     connect(view_, &ImageView::clicked, this, &VueWindow::clicked);
     connect(view_, &ImageView::handleMoved, this, &VueWindow::handleMoved);
+    connect(view_, &ImageView::handleRemoveRequested, this, &VueWindow::removeHandle);
+    connect(view_, &ImageView::rectangleDragged, this, &VueWindow::applyZone);
+    // On the image only, so Backspace still edits the Levels fields.
+    auto* undo = new QShortcut(QKeySequence(Qt::Key_Backspace), view_);
+    undo->setContext(Qt::WidgetShortcut);
+    connect(undo, &QShortcut::activated, this, &VueWindow::undoPoint);
     connect(zoneTool_, &QPushButton::clicked, this, [this] { startTool(Tool::Zone); });
     connect(wholeImage, &QPushButton::clicked, this, [this] { setZone(std::nullopt); });
     connect(calcul, &QPushButton::clicked, this, &VueWindow::analysePhases);
@@ -397,10 +403,11 @@ void VueWindow::refreshTool() {
     lengthTool_->setChecked(tool_ == Tool::Length);
     vickersTool_->setChecked(tool_ == Tool::Vickers);
     zoneTool_->setChecked(tool_ == Tool::Zone);
+    view_->setRectangleMode(tool_ == Tool::Zone);  // a drag draws the zone instead of panning
     QString prompt;
     if (tool_ == Tool::Zone) {
-        prompt = clicks_.empty() ? tr("Zone — coin 1/2 : cliquez un coin de la zone à analyser.")
-                                 : tr("Zone — coin 2/2 : cliquez le coin opposé.");
+        prompt = clicks_.empty() ? tr("Zone : glissez sur l'image pour tracer le rectangle à analyser.")
+                                 : tr("Zone : cliquez le coin opposé.");
         zoneLabel_->setText(prompt + tr(" (Échap : annuler)"));
         prompt.clear();  // shown beside the zone buttons, not with the measurements
     } else if (tool_) {
@@ -417,7 +424,8 @@ void VueWindow::refreshTool() {
             };
             prompt = tr(steps[std::min<std::size_t>(done, 3)]);
         }
-        prompt += tr("\nÉchap ou le même bouton : terminer. Glissez un point jaune pour le corriger.");
+        prompt += tr("\nGlisser un point jaune : le corriger. Clic droit dessus : supprimer la mesure. "
+                     "Retour arrière : annuler le dernier point. Échap ou le même bouton : terminer.");
     }
     toolPrompt_->setText(prompt);
     toolPrompt_->setVisible(!prompt.isEmpty());
@@ -426,28 +434,14 @@ void VueWindow::refreshTool() {
 void VueWindow::clicked(QPointF point) {
     if (!tool_) return;
     if (*tool_ == Tool::Zone) {
+        // Two clicks at opposite corners still work, besides dragging.
         clicks_.push_back(point);
         if (clicks_.size() < 2) {
             refreshTool();
             redrawMarks();
             return;
         }
-        const QRectF corners = QRectF(clicks_[0], clicks_[1]).normalized();
-        const cv::Size size = vue_.original().size();
-        const cv::Rect zone = cv::Rect(cv::Point(qRound(corners.left()), qRound(corners.top())),
-                                       cv::Point(qRound(corners.right()), qRound(corners.bottom()))) &
-                              cv::Rect(cv::Point(0, 0), size);
-        cancelTool();
-        if (phaseZoneProblem(zone, size)) {
-            const double share = 100.0 * zone.area() / (static_cast<double>(size.width) * size.height);
-            QMessageBox::warning(this, tr("Zone refusée"),
-                                 tr("Cette zone couvre %1 % de l'image ; il en faut au moins %2 % pour compter assez "
-                                    "de grains.")
-                                     .arg(share, 0, 'f', 0)
-                                     .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
-            return;
-        }
-        setZone(zone);
+        applyZone(QRectF(clicks_[0], clicks_[1]));
         return;
     }
     Mark& mark = marks_.back();
@@ -461,21 +455,85 @@ void VueWindow::clicked(QPointF point) {
     redrawMarks();
 }
 
-void VueWindow::handleMoved(int index, QPointF point) {
-    // Handles are every Mark's points, in order.
+void VueWindow::applyZone(QRectF corners) {
+    if (tool_ != Tool::Zone) return;
+    corners = corners.normalized();
+    const cv::Size size = vue_.original().size();
+    const cv::Rect zone = cv::Rect(cv::Point(qRound(corners.left()), qRound(corners.top())),
+                                   cv::Point(qRound(corners.right()), qRound(corners.bottom()))) &
+                          cv::Rect(cv::Point(0, 0), size);
+    cancelTool();
+    if (phaseZoneProblem(zone, size)) {
+        const double share = 100.0 * zone.area() / (static_cast<double>(size.width) * size.height);
+        QMessageBox::warning(this, tr("Zone refusée"),
+                             tr("Cette zone couvre %1 % de l'image ; il en faut au moins %2 % pour compter assez "
+                                "de grains.")
+                                 .arg(share, 0, 'f', 0)
+                                 .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
+        return;
+    }
+    setZone(zone);
+}
+
+std::optional<std::pair<std::size_t, std::size_t>> VueWindow::markPointAt(int index) const {
+    if (index < 0) return std::nullopt;
     std::size_t remaining = static_cast<std::size_t>(index);
     for (std::size_t i = 0; i < marks_.size(); ++i) {
-        if (remaining >= marks_[i].points.size()) {
-            remaining -= marks_[i].points.size();
-            continue;
-        }
-        marks_[i].points[remaining] = point;
-        if (marks_[i].points.size() == pointsNeeded(marks_[i].tool)) {
-            current_ = i;
-            showResult(marks_[i]);
-        }
-        break;
+        if (remaining < marks_[i].points.size()) return std::make_pair(i, remaining);
+        remaining -= marks_[i].points.size();
     }
+    return std::nullopt;
+}
+
+void VueWindow::handleMoved(int index, QPointF point) {
+    if (const auto at = markPointAt(index)) {
+        Mark& mark = marks_[at->first];
+        mark.points[at->second] = point;
+        if (mark.points.size() == pointsNeeded(mark.tool)) {
+            current_ = at->first;
+            showResult(mark);
+        }
+    }
+    redrawMarks();
+}
+
+void VueWindow::removeHandle(int index) {
+    const auto at = markPointAt(index);
+    if (!at) return;
+    const std::size_t i = at->first;
+    const bool pending = tool_ && tool_ != Tool::Zone && i + 1 == marks_.size();
+    if (pending) {
+        marks_[i].points.erase(marks_[i].points.begin() + static_cast<std::ptrdiff_t>(at->second));
+    } else {
+        marks_.erase(marks_.begin() + static_cast<std::ptrdiff_t>(i));
+        if (current_ == i) {
+            current_.reset();
+            measureResult_->setText(tr("Mesure supprimée."));
+        } else if (current_ && *current_ > i) {
+            --*current_;
+        }
+    }
+    refreshTool();
+    redrawMarks();
+}
+
+void VueWindow::undoPoint() {
+    if (tool_ == Tool::Zone) {
+        if (!clicks_.empty()) clicks_.pop_back();
+    } else if (tool_) {
+        // Nothing clicked yet on the new reading: take back the one just finished.
+        if (marks_.back().points.empty() && marks_.size() >= 2 && marks_[marks_.size() - 2].tool == *tool_) {
+            marks_.pop_back();
+            if (current_ == marks_.size() - 1) {
+                current_.reset();
+                measureResult_->clear();
+            }
+        }
+        if (!marks_.back().points.empty()) marks_.back().points.pop_back();
+    } else {
+        return;
+    }
+    refreshTool();
     redrawMarks();
 }
 
