@@ -2,6 +2,7 @@
 
 #include "calibration.hpp"
 #include "camera_factory.hpp"
+#include "mire_calibration.hpp"
 
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -27,6 +28,10 @@ struct WorkstationConfig {
     // recently measured on the mire. Empty, or naming no Calibration (a file
     // edited by hand), means the last one listed.
     std::string referenceGrossissement;
+    // The period of this workstation's mire, in µm: the distance between two
+    // neighbouring lines. 20 µm for the lab's mire; a stage micrometer of
+    // 1 mm in 100 divisions is 10 µm. Set in the calibration dialog (#65).
+    double mirePitchMicrons = kMirePitchMicrons;
     // Absolute folder the VueStore files Vues under; empty = defaultVueRoot().
     // Set it to put this workstation's Vues on another drive.
     std::filesystem::path vueRoot;
@@ -72,7 +77,8 @@ struct WorkstationConfig {
     bool removeCalibration(const std::string& grossissement);
 
     nlohmann::json toJson() const;
-    // Missing "camera", "calibrations" or "reference_grossissement" keys
+    // Missing "camera", "calibrations", "reference_grossissement" or
+    // "mire_pitch_microns" keys (a pitch that isn't a positive number too)
     // take their defaults, so older files load. Throws on anything
     // malformed, including a Calibration setCalibration() would refuse or a
     // Grossissement listed twice.

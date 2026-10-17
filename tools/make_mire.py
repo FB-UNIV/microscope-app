@@ -40,6 +40,9 @@ def make_mire(width, height, pitch, line_width, seed=0):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pitch", type=float, default=31.0, help="pixels between two lines (default 31)")
+    parser.add_argument("--mire-microns", type=float, default=MIRE_PITCH_MICRONS,
+                        help="the mire's period the lines stand for, in um (default 20, the lab's mire); "
+                             "set the same in the calibration dialog")
     parser.add_argument("--size", default="3840x2160", help="WIDTHxHEIGHT (default the A5's 3840x2160)")
     parser.add_argument("--line-width", type=float, default=3.0, help="line width in pixels (default 3)")
     parser.add_argument("--out", default="mire.png", help="PNG to write (default mire.png)")
@@ -48,10 +51,12 @@ def main():
     width, height = (int(v) for v in args.size.lower().split("x"))
     if args.pitch <= args.line_width:
         parser.error("--pitch must be larger than --line-width")
+    if args.mire_microns <= 0:
+        parser.error("--mire-microns must be positive")
     if not cv2.imwrite(args.out, make_mire(width, height, args.pitch, args.line_width)):
         raise SystemExit(f"cannot write {args.out}")
     print(f"{args.out}: {width}x{height}, one line every {args.pitch:g} px = "
-          f"{args.pitch / MIRE_PITCH_MICRONS:.4f} px/um expected")
+          f"{args.pitch / args.mire_microns:.4f} px/um expected with a {args.mire_microns:g} um mire period")
 
 
 if __name__ == "__main__":
