@@ -17,6 +17,15 @@ std::uint32_t truncToU32(double value) {
     return static_cast<std::uint32_t>(static_cast<std::int64_t>(value));
 }
 
+// legacySmooth's disk is 5x5: a smaller image can't be analysed.
+constexpr int kMinPhaseSide = 5;
+
+// The factor that brings a frame of `size` to the legacy width; 1 for a
+// frame no wider (ADR 0021).
+double legacyScale(const cv::Size& size) {
+    return size.width > kLegacyFrameWidth ? static_cast<double>(kLegacyFrameWidth) / size.width : 1.0;
+}
+
 void requireGrey8(const cv::Mat& image, int minSide, const char* who) {
     if (image.type() != CV_8UC1 || image.rows < minSide || image.cols < minSide) {
         throw std::invalid_argument(std::string(who) + ": expected CV_8UC1 of at least " +
@@ -115,6 +124,9 @@ AutoThreshold thresholdFromHistogram(const std::array<std::uint32_t, 256>& histo
             threshold = v;
         }
     }
+    // An empty histogram: no edge stood out. The legacy defaults below stay,
+    // for parity, but are flagged as meaningless.
+    const bool found = peak > 0;
 
     const std::uint32_t level = truncToU32(static_cast<double>(peak) * 70.72135785007073 / 100.0);
     for (int v = 0; v < 256; ++v) {
@@ -151,6 +163,7 @@ AutoThreshold thresholdFromHistogram(const std::array<std::uint32_t, 256>& histo
     result.threshold = threshold;
     result.tolerance = width / 3;  // denombre_metal_ima_fast divides by 3
     result.histogram = smooth;
+    result.found = found;
     return result;
 }
 
@@ -264,6 +277,43 @@ PhaseAnalysis analyzePhases(const cv::Mat& image) {
     analysis.fractions =
         countPhases(analysis.analysedGrey, analysis.threshold.threshold, analysis.threshold.tolerance);
     return analysis;
+}
+
+int minPhaseZoneSide(const cv::Size& size) {
+    return static_cast<int>(std::ceil(kMinPhaseSide / legacyScale(size)));
+}
+
+std::optional<std::string> phaseZoneProblem(const cv::Rect& zone, const cv::Size& size) {
+    const auto describe = [](const cv::Rect& r) {
+        return std::to_string(r.width) + "x" + std::to_string(r.height) + " at (" + std::to_string(r.x) + ", " +
+               std::to_string(r.y) + ")";
+    };
+    const std::string image = std::to_string(size.width) + "x" + std::to_string(size.height);
+    if (zone.width <= 0 || zone.height <= 0 || (zone & cv::Rect(cv::Point(0, 0), size)) != zone) {
+        return "the zone " + describe(zone) + " is not inside the " + image + " image";
+    }
+    const int side = minPhaseZoneSide(size);
+    if (zone.width < side || zone.height < side) {
+        return "the zone " + describe(zone) + " is too small to analyse: on a " + image + " image it needs at least " +
+               std::to_string(side) + "x" + std::to_string(side) + " pixels (5x5 at the legacy scale)";
+    }
+    return std::nullopt;
+}
+
+PhaseAnalysis analyzeVuePhases(const cv::Mat& image, std::optional<cv::Rect> zone) {
+    if (zone) {
+        if (auto why = phaseZoneProblem(*zone, image.size())) {
+            throw std::invalid_argument("analyzeVuePhases: " + *why);
+        }
+    }
+    const cv::Mat part = zone ? image(*zone) : image;
+    // The scale comes from the whole frame, so a zone sees the same detail
+    // as the full photo it was cut from.
+    const double scale = legacyScale(image.size());
+    if (scale >= 1.0) return analyzePhases(part);
+    cv::Mat reduced;
+    cv::resize(part, reduced, cv::Size(), scale, scale, cv::INTER_AREA);
+    return analyzePhases(reduced);
 }
 
 } // namespace msapp
