@@ -7,6 +7,7 @@
 #include <QImage>
 #include <QMainWindow>
 #include <QPointF>
+#include <QRectF>
 
 #include <optional>
 #include <string>
@@ -83,6 +84,17 @@ private:
     void cancelTool();
     void clicked(QPointF point);
     void handleMoved(int index, QPointF point);
+    // Right-click on a point: its finished measurement goes; a point of the
+    // one being clicked goes alone.
+    void removeHandle(int index);
+    // Backspace: takes back the last point clicked, reopening the reading
+    // just finished if need be.
+    void undoPoint();
+    // The Mark and point a handle index stands for (handles are every
+    // Mark's points, in order).
+    std::optional<std::pair<std::size_t, std::size_t>> markPointAt(int index) const;
+    // The zone tool's rectangle, dragged or clicked corner to corner.
+    void applyZone(QRectF corners);
     // Draws the zone and every Mark, with its values, and makes the Marks'
     // points draggable.
     void redrawMarks();
