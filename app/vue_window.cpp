@@ -21,13 +21,16 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRectF>
 #include <QScrollArea>
+#include <QShortcut>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <exception>
 #include <memory>
 #include <utility>
@@ -44,7 +47,8 @@ QString describe(const Treatment& treatment) {
         return VueWindow::tr("Échelle (%1)").arg(QString::fromStdString(echelle->calibration().grossissement));
     }
     if (const auto* overlay = dynamic_cast<const PhaseOverlayTreatment*>(&treatment)) {
-        return VueWindow::tr("Carte des phases (seuil %1)").arg(overlay->threshold());
+        return overlay->zone() ? VueWindow::tr("Carte des phases (seuil %1, sur une zone)").arg(overlay->threshold())
+                               : VueWindow::tr("Carte des phases (seuil %1)").arg(overlay->threshold());
     }
     return QString::fromStdString(treatment.type());
 }
@@ -148,14 +152,21 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     levelsTimer_->setSingleShot(true);
     levelsTimer_->setInterval(150);  // re-render once the spin box settles
 
-    // Measurement and Dureté Vickers.
+    // Measurement and Dureté Vickers. The active tool's button stays pressed;
+    // pressing it again, or Échap, puts it away.
     lengthTool_ = new QPushButton(tr("Mesurer une longueur"));
+    lengthTool_->setCheckable(true);
     vickersTool_ = new QPushButton(tr("Dureté Vickers"));
+    vickersTool_->setCheckable(true);
     load_ = new QComboBox;
     for (const double kgf : {0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 30.0}) {
         load_->addItem(QStringLiteral("HV%1 (%1 kgf)").arg(kgf), kgf);
     }
     load_->setCurrentIndex(load_->findData(kLegacyVickersLoadKgf));
+    toolPrompt_ = new QLabel;
+    toolPrompt_->setWordWrap(true);
+    toolPrompt_->setStyleSheet(QStringLiteral("background: #e7f1ff; padding: 6px; font-weight: bold;"));
+    toolPrompt_->hide();
     measureResult_ = new QLabel;
     measureResult_->setWordWrap(true);
     measureResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -167,8 +178,10 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     vickersRow->addWidget(vickersTool_);
     vickersRow->addWidget(load_);
     measureLayout->addLayout(vickersRow);
+    measureLayout->addWidget(toolPrompt_);
     measureLayout->addWidget(measureResult_);
     measureLayout->addWidget(clearMarks);
+    auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     if (!vue_.calibration()) {
         const QString why = tr("Cette Vue n'a pas de Calibration : aucune mesure n'est possible (ADR 0015).");
         lengthTool_->setEnabled(false);
@@ -178,7 +191,16 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
         measureResult_->setText(why);
     }
 
-    // Phase analysis.
+    // Phase analysis, on the whole photo or on a zone of it (#55).
+    zoneTool_ = new QPushButton(tr("Choisir une zone…"));
+    zoneTool_->setCheckable(true);
+    zoneTool_->setToolTip(tr("Deux clics aux coins opposés : l'analyse ne porte que sur cette zone, pour laisser de "
+                              "côté poussières et inclusions. Elle doit couvrir au moins %1 % de l'image, pour "
+                              "compter assez de grains.")
+                               .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
+    auto* wholeImage = new QPushButton(tr("Toute l'image"));
+    zoneLabel_ = new QLabel;
+    zoneLabel_->setWordWrap(true);
     auto* calcul = new QPushButton(tr("CALCUL : pourcentage des constituants"));
     phaseResult_ = new QLabel;
     phaseResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -187,10 +209,21 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     phaseMap_->setEnabled(false);
     auto* phaseBox = new QGroupBox(tr("Analyse de phases"));
     auto* phaseLayout = new QVBoxLayout(phaseBox);
+    auto* zoneRow = new QHBoxLayout;
+    zoneRow->addWidget(zoneTool_);
+    zoneRow->addWidget(wholeImage);
+    phaseLayout->addLayout(zoneRow);
+    phaseLayout->addWidget(zoneLabel_);
     phaseLayout->addWidget(calcul);
     phaseLayout->addWidget(phaseResult_);
     phaseLayout->addWidget(histogram_);
     phaseLayout->addWidget(phaseMap_);
+    // The zone of the phase map saved with this Vue, so CALCUL counts the
+    // same pixels as last time.
+    if (const auto index = indexOf("phase_overlay")) {
+        zone_ = dynamic_cast<const PhaseOverlayTreatment&>(vue_.treatment(*index)).zone();
+    }
+    refreshZone();
 
     principale_ = new QPushButton;
     auto* exportCopy = new QPushButton(tr("Exporter une copie (traitements appliqués)…"));
@@ -228,12 +261,22 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     connect(lengthTool_, &QPushButton::clicked, this, [this] { startTool(Tool::Length); });
     connect(vickersTool_, &QPushButton::clicked, this, [this] { startTool(Tool::Vickers); });
     connect(clearMarks, &QPushButton::clicked, this, [this] {
-        tool_.reset();
-        clicks_.clear();
-        view_->clearMarks();
+        cancelTool();
+        marks_.clear();
+        current_.reset();
         measureResult_->clear();
+        redrawMarks();
+    });
+    connect(escape, &QShortcut::activated, this, &VueWindow::cancelTool);
+    // A Vickers value follows the load picked, for every indent shown.
+    connect(load_, &QComboBox::currentIndexChanged, this, [this] {
+        redrawMarks();
+        if (current_) showResult(marks_[*current_]);
     });
     connect(view_, &ImageView::clicked, this, &VueWindow::clicked);
+    connect(view_, &ImageView::handleMoved, this, &VueWindow::handleMoved);
+    connect(zoneTool_, &QPushButton::clicked, this, [this] { startTool(Tool::Zone); });
+    connect(wholeImage, &QPushButton::clicked, this, [this] { setZone(std::nullopt); });
     connect(calcul, &QPushButton::clicked, this, &VueWindow::analysePhases);
     connect(phaseMap_, &QPushButton::clicked, this, &VueWindow::showPhaseMap);
     connect(principale_, &QPushButton::clicked, this, &VueWindow::flagPrincipale);
@@ -327,48 +370,169 @@ void VueWindow::removeTreatment() {
 }
 
 void VueWindow::startTool(Tool tool) {
+    const bool sameTool = tool_ == tool;
+    cancelTool();  // drops what the previous tool left half-done
+    if (sameTool) return;  // its button pressed again: put it away
     tool_ = tool;
+    if (tool != Tool::Zone) marks_.push_back(Mark{tool, {}});
+    refreshTool();
+}
+
+void VueWindow::cancelTool() {
+    if (!marks_.empty() && marks_.back().points.size() < pointsNeeded(marks_.back().tool)) marks_.pop_back();
+    tool_.reset();
     clicks_.clear();
-    measureResult_->setText(tool == Tool::Length
-                                ? tr("Cliquez les deux extrémités de la longueur.")
-                                : tr("Cliquez les deux extrémités de la première diagonale de l'empreinte, puis de "
-                                     "la seconde."));
+    refreshZone();
+    refreshTool();
+    redrawMarks();
+}
+
+void VueWindow::refreshTool() {
+    lengthTool_->setChecked(tool_ == Tool::Length);
+    vickersTool_->setChecked(tool_ == Tool::Vickers);
+    zoneTool_->setChecked(tool_ == Tool::Zone);
+    QString prompt;
+    if (tool_ == Tool::Zone) {
+        prompt = clicks_.empty() ? tr("Zone — coin 1/2 : cliquez un coin de la zone à analyser.")
+                                 : tr("Zone — coin 2/2 : cliquez le coin opposé.");
+        zoneLabel_->setText(prompt + tr(" (Échap : annuler)"));
+        prompt.clear();  // shown beside the zone buttons, not with the measurements
+    } else if (tool_) {
+        const std::size_t done = marks_.back().points.size();
+        if (*tool_ == Tool::Length) {
+            prompt = done == 0 ? tr("Longueur — point 1/2 : cliquez une extrémité.")
+                               : tr("Longueur — point 2/2 : cliquez l'autre extrémité.");
+        } else {
+            static const char* const steps[] = {
+                QT_TR_NOOP("Dureté Vickers — point 1/4 : un sommet de la première diagonale."),
+                QT_TR_NOOP("Dureté Vickers — point 2/4 : le sommet opposé de la première diagonale."),
+                QT_TR_NOOP("Dureté Vickers — point 3/4 : un sommet de la seconde diagonale."),
+                QT_TR_NOOP("Dureté Vickers — point 4/4 : le sommet opposé de la seconde diagonale."),
+            };
+            prompt = tr(steps[std::min<std::size_t>(done, 3)]);
+        }
+        prompt += tr("\nÉchap ou le même bouton : terminer. Glissez un point jaune pour le corriger.");
+    }
+    toolPrompt_->setText(prompt);
+    toolPrompt_->setVisible(!prompt.isEmpty());
 }
 
 void VueWindow::clicked(QPointF point) {
     if (!tool_) return;
-    view_->addPoint(point);
-    clicks_.push_back(point);
-    const auto at = [&](std::size_t i) { return cv::Point2d(clicks_[i].x(), clicks_[i].y()); };
+    if (*tool_ == Tool::Zone) {
+        clicks_.push_back(point);
+        if (clicks_.size() < 2) {
+            refreshTool();
+            redrawMarks();
+            return;
+        }
+        const QRectF corners = QRectF(clicks_[0], clicks_[1]).normalized();
+        const cv::Size size = vue_.original().size();
+        const cv::Rect zone = cv::Rect(cv::Point(qRound(corners.left()), qRound(corners.top())),
+                                       cv::Point(qRound(corners.right()), qRound(corners.bottom()))) &
+                              cv::Rect(cv::Point(0, 0), size);
+        cancelTool();
+        if (phaseZoneProblem(zone, size)) {
+            const double share = 100.0 * zone.area() / (static_cast<double>(size.width) * size.height);
+            QMessageBox::warning(this, tr("Zone refusée"),
+                                 tr("Cette zone couvre %1 % de l'image ; il en faut au moins %2 % pour compter assez "
+                                    "de grains.")
+                                     .arg(share, 0, 'f', 0)
+                                     .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
+            return;
+        }
+        setZone(zone);
+        return;
+    }
+    Mark& mark = marks_.back();
+    mark.points.push_back(point);
+    if (mark.points.size() == pointsNeeded(mark.tool)) {
+        current_ = marks_.size() - 1;
+        showResult(mark);
+        marks_.push_back(Mark{*tool_, {}});  // the tool stays out for the next one
+    }
+    refreshTool();
+    redrawMarks();
+}
+
+void VueWindow::handleMoved(int index, QPointF point) {
+    // Handles are every Mark's points, in order.
+    std::size_t remaining = static_cast<std::size_t>(index);
+    for (std::size_t i = 0; i < marks_.size(); ++i) {
+        if (remaining >= marks_[i].points.size()) {
+            remaining -= marks_[i].points.size();
+            continue;
+        }
+        marks_[i].points[remaining] = point;
+        if (marks_[i].points.size() == pointsNeeded(marks_[i].tool)) {
+            current_ = i;
+            showResult(marks_[i]);
+        }
+        break;
+    }
+    redrawMarks();
+}
+
+void VueWindow::showResult(const Mark& mark) {
+    const auto at = [&](std::size_t i) { return cv::Point2d(mark.points[i].x(), mark.points[i].y()); };
     try {
-        if (*tool_ == Tool::Length && clicks_.size() == 2) {
+        if (mark.tool == Tool::Length) {
             const Measurement length(at(0), at(1), vue_);
-            view_->addLine(clicks_[0], clicks_[1]);
-            view_->addLabel((clicks_[0] + clicks_[1]) / 2, micronsLabel(length.label()));
             measureResult_->setText(tr("Longueur : %1 (%2 px)")
                                         .arg(micronsLabel(length.label()))
                                         .arg(length.pixelDistance(), 0, 'f', 1));
-            clicks_.clear();
-        } else if (*tool_ == Tool::Vickers && clicks_.size() == 2) {
-            view_->addLine(clicks_[0], clicks_[1]);
-            measureResult_->setText(tr("Cliquez maintenant les deux extrémités de la seconde diagonale."));
-        } else if (*tool_ == Tool::Vickers && clicks_.size() == 4) {
-            view_->addLine(clicks_[2], clicks_[3]);
-            const Measurement d1(at(0), at(1), vue_);
-            const Measurement d2(at(2), at(3), vue_);
-            const VickersResult hv = vickersHardness(d1, d2, load_->currentData().toDouble());
-            view_->addLabel(clicks_[3], QString::fromStdString(hv.label()));
+        } else {
+            const VickersResult hv =
+                vickersHardness(Measurement(at(0), at(1), vue_), Measurement(at(2), at(3), vue_),
+                                load_->currentData().toDouble());
             measureResult_->setText(tr("%1\nDiagonales : %2 µm et %3 µm (moyenne %4 µm)")
                                         .arg(QString::fromStdString(hv.label()))
                                         .arg(hv.diagonal1Microns, 0, 'f', 2)
                                         .arg(hv.diagonal2Microns, 0, 'f', 2)
                                         .arg(hv.meanDiagonalMicrons, 0, 'f', 2));
-            clicks_.clear();
         }
     } catch (const std::exception& e) {
-        clicks_.clear();
-        QMessageBox::warning(this, tr("Mesure refusée"), QString::fromStdString(e.what()));
+        // e.g. two points dragged onto each other: say so, keep the Mark.
+        measureResult_->setText(tr("Mesure impossible : %1").arg(QString::fromStdString(e.what())));
     }
+}
+
+void VueWindow::redrawMarks() {
+    view_->clearMarks();
+    if (zone_) {
+        const QPointF topLeft(zone_->x, zone_->y);
+        const QPointF topRight(zone_->x + zone_->width, zone_->y);
+        const QPointF bottomRight(zone_->x + zone_->width, zone_->y + zone_->height);
+        const QPointF bottomLeft(zone_->x, zone_->y + zone_->height);
+        view_->addLine(topLeft, topRight);
+        view_->addLine(topRight, bottomRight);
+        view_->addLine(bottomRight, bottomLeft);
+        view_->addLine(bottomLeft, topLeft);
+    }
+    for (const QPointF& corner : clicks_) view_->addPoint(corner);
+
+    std::vector<QPointF> handles;
+    for (const Mark& mark : marks_) {
+        const std::vector<QPointF>& p = mark.points;
+        handles.insert(handles.end(), p.begin(), p.end());
+        if (p.size() >= 2) view_->addLine(p[0], p[1]);
+        if (p.size() == 4) view_->addLine(p[2], p[3]);
+        if (p.size() != pointsNeeded(mark.tool)) continue;
+        const auto at = [&](std::size_t i) { return cv::Point2d(p[i].x(), p[i].y()); };
+        try {
+            const Measurement first(at(0), at(1), vue_);
+            view_->addLabel((p[0] + p[1]) / 2, micronsLabel(first.label()));
+            if (mark.tool == Tool::Vickers) {
+                const Measurement second(at(2), at(3), vue_);
+                view_->addLabel((p[2] + p[3]) / 2, micronsLabel(second.label()));
+                const VickersResult hv = vickersHardness(first, second, load_->currentData().toDouble());
+                view_->addLabel(p[3], QString::fromStdString(hv.label()));
+            }
+        } catch (const std::exception&) {
+            // No value to show (showResult says why); the lines stay.
+        }
+    }
+    view_->setHandles(handles);
 }
 
 void VueWindow::analysePhases() {
@@ -376,7 +540,7 @@ void VueWindow::analysePhases() {
         const WaitCursor wait;
         // On the photo as captured: Levels would shift the grey levels, and the
         // Échelle's bar and the phase map would be counted as phases.
-        phases_ = analyzePhases(vue_.original());
+        phases_ = zone_ ? analyzePhasesInZone(vue_.original(), *zone_) : analyzePhases(vue_.original());
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Analyse de phases"), QString::fromStdString(e.what()));
         return;
@@ -392,11 +556,33 @@ void VueWindow::analysePhases() {
     phaseMap_->setEnabled(true);
 }
 
+void VueWindow::setZone(std::optional<cv::Rect> zone) {
+    zone_ = zone;
+    // The percentages and the map belonged to the previous zone.
+    phases_.reset();
+    phaseResult_->setText(zone_ ? tr("Lancez CALCUL sur cette zone.") : tr("Lancez CALCUL sur toute l'image."));
+    phaseMap_->setEnabled(false);
+    refreshZone();
+    redrawMarks();
+}
+
+void VueWindow::refreshZone() {
+    if (!zone_) {
+        zoneLabel_->setText(tr("Zone analysée : toute l'image."));
+        return;
+    }
+    const cv::Size size = vue_.original().size();
+    zoneLabel_->setText(tr("Zone analysée : %1x%2 px, %3 % de l'image.")
+                            .arg(zone_->width)
+                            .arg(zone_->height)
+                            .arg(100.0 * zone_->area() / (static_cast<double>(size.width) * size.height), 0, 'f', 0));
+}
+
 void VueWindow::showPhaseMap() {
     if (!phases_) return;
     const int threshold = phases_->threshold.threshold;
     edit([&] {
-        auto overlay = std::make_unique<PhaseOverlayTreatment>(threshold);
+        auto overlay = std::make_unique<PhaseOverlayTreatment>(threshold, zone_);
         if (const auto index = indexOf("phase_overlay")) {
             vue_.replaceTreatment(*index, std::move(overlay));
         } else if (const auto echelle = indexOf("echelle")) {

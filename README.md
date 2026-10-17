@@ -102,8 +102,15 @@ one.
   Double-click opens a Vue: Levels with a live preview, the Échelle,
   removing a Treatment (all saved in the sidecar at once), *Mesurer une
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
-  default), and *Analyse de phases* (CALCUL, percentages, histogram with
-  the Seuil, the phase map as a Treatment). Measuring is refused on an
+  default; the active tool stays pressed and says what to click next,
+  Échap puts it away, and every point — a yellow ring — can be dragged
+  afterwards to correct a reading, its value following live), and
+  *Analyse de phases* (CALCUL, percentages, histogram with
+  the Seuil, the phase map as a Treatment). *Choisir une zone…* (two
+  clicks, opposite corners) restricts CALCUL and the map to a zone that
+  leaves dust and inclusions out; it must cover at least 15 % of the image
+  (`kMinPhaseZoneFraction`, until the teacher gives a figure) and is saved
+  with the map, outlined in cyan. Measuring is refused on an
   uncalibrated Vue. *Exporter une copie* writes the Vue with its
   Treatments as PNG, TIFF or JPEG; the photo and sidecar are untouched.
 - **Filing Vues.** *Classer la Vue…* moves the selected Vue, with its
