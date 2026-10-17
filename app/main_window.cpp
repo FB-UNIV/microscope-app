@@ -240,6 +240,18 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     auto* file = new QPushButton(tr("Classer la Vue…"));
     file->setToolTip(tr("Range la Vue choisie, avec ses traitements, dans un Échantillon du catalogue : une Vue non "
                         "classée, ou prise sous le mauvais Échantillon."));
+    auto* remove = new QPushButton(tr("Supprimer la Vue…"));
+    remove->setToolTip(tr("Déplace la Vue choisie, avec ses traitements, dans la Corbeille du dossier des Vues "
+                          "(touche Suppr). Rien n'est effacé."));
+    // The same on the list itself: right-click, and Suppr.
+    vueList_->setContextMenuPolicy(Qt::ActionsContextMenu);
+    QAction* openAction = new QAction(tr("Ouvrir la Vue"), vueList_);
+    QAction* principaleAction = new QAction(tr("★ Choisir comme Vue principale"), vueList_);
+    QAction* fileAction = new QAction(tr("Classer la Vue…"), vueList_);
+    QAction* removeAction = new QAction(tr("Supprimer la Vue…"), vueList_);
+    removeAction->setShortcut(QKeySequence::Delete);
+    removeAction->setShortcutContext(Qt::WidgetShortcut);
+    vueList_->addActions({openAction, principaleAction, fileAction, removeAction});
     auto* side = new QWidget;
     auto* sideLayout = new QVBoxLayout(side);
     sideLayout->addWidget(instructions_);
@@ -250,7 +262,10 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     vueButtons->addWidget(open);
     vueButtons->addWidget(principale);
     sideLayout->addLayout(vueButtons);
-    sideLayout->addWidget(file);
+    auto* moreButtons = new QHBoxLayout;
+    moreButtons->addWidget(file);
+    moreButtons->addWidget(remove);
+    sideLayout->addLayout(moreButtons);
     auto* dock = new QDockWidget(tr("TP et Vues"));
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setWidget(side);
@@ -294,6 +309,11 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     connect(principale, &QPushButton::clicked, this, &MainWindow::flagPrincipale);
     connect(open, &QPushButton::clicked, this, &MainWindow::openVue);
     connect(file, &QPushButton::clicked, this, &MainWindow::fileSelectedVue);
+    connect(remove, &QPushButton::clicked, this, &MainWindow::deleteSelectedVue);
+    connect(openAction, &QAction::triggered, this, &MainWindow::openVue);
+    connect(principaleAction, &QAction::triggered, this, &MainWindow::flagPrincipale);
+    connect(fileAction, &QAction::triggered, this, &MainWindow::fileSelectedVue);
+    connect(removeAction, &QAction::triggered, this, &MainWindow::deleteSelectedVue);
     connect(vueList_, &QListWidget::itemActivated, this, &MainWindow::openVue);
     connect(unsortedButton_, &QPushButton::toggled, this, &MainWindow::refreshVues);
     connect(grossissement_, &QComboBox::currentTextChanged, this, &MainWindow::refreshCaptureState);
@@ -668,6 +688,10 @@ void MainWindow::openVue() {
         Vue vue = Vue::load(toPath(item->data(kPathRole).toString()));
         auto* window = new VueWindow(std::move(vue), store_, *where, this);  // a window of its own
         connect(window, &VueWindow::principaleChanged, this, &MainWindow::refreshVues);
+        connect(window, &VueWindow::deleteRequested, this, [this, window] {
+            const std::filesystem::path vue = window->vuePath();  // the window may close
+            deleteVue(vue);
+        });
         window->show();
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Vue illisible"), QString::fromStdString(e.what()));
@@ -711,6 +735,50 @@ void MainWindow::fileSelectedVue() {
                                  .arg(QString::fromStdString(to->department), QString::fromStdString(to->tp),
                                       QString::fromStdString(to->echantillon)),
                              10000);
+    refreshVues();
+}
+
+void MainWindow::deleteSelectedVue() {
+    const QListWidgetItem* item = vueList_->currentItem();
+    if (item == nullptr) {
+        QMessageBox::information(this, tr("Supprimer la Vue"), tr("Sélectionnez d'abord une Vue dans la liste."));
+        return;
+    }
+    deleteVue(toPath(item->data(kPathRole).toString()));
+}
+
+void MainWindow::deleteVue(const std::filesystem::path& vue) {
+    bool principale = false;
+    if (const auto where = listedLocation()) {
+        try {
+            principale = store_.principale(*where) == vue;
+        } catch (const std::exception&) {
+            principale = false;  // an unreadable flag: nothing to warn about
+        }
+    }
+    QString question = tr("Supprimer la Vue du %1 ?").arg(vueLabel(vue, false));
+    if (principale) {
+        question += tr("\n\nC'est la Vue principale de l'Échantillon : la Fiche du TP ne l'aura plus.");
+    }
+    question += tr("\n\nElle est déplacée, avec ses traitements, dans la Corbeille du dossier des Vues "
+                   "(Poste › Ouvrir le dossier des Vues). Rien n'est effacé : elle peut y être reprise à la main.");
+    const auto answer = QMessageBox::question(this, tr("Supprimer la Vue"), question,
+                                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (answer != QMessageBox::Yes) return;
+
+    // Each Treatment is already saved; an open window would save the next
+    // one where the Vue no longer is.
+    for (VueWindow* window : findChildren<VueWindow*>()) {
+        if (window->vuePath() == vue) window->close();
+    }
+    try {
+        store_.deleteVue(vue);
+    } catch (const std::exception& e) {
+        QMessageBox::warning(this, tr("Supprimer la Vue"), QString::fromStdString(e.what()));
+        refreshVues();
+        return;
+    }
+    statusBar()->showMessage(tr("Vue déplacée dans la Corbeille du dossier des Vues"), 10000);
     refreshVues();
 }
 

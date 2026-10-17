@@ -24,6 +24,7 @@ struct VueLocation {
 //
 //   <root>/<Department>/<TP>/<Échantillon>/<UTC time>_<random>.tiff
 //   <root>/Unsorted/<UTC time>_<random>.tiff
+//   <root>/Corbeille/...  deleted Vues, under the same folders (deleteVue)
 //
 // e.g. 20261015-154353-123Z_9f2c4a7e1b3d5c60.tiff. The time sorts the files
 // in capture order; the random part keeps two captures in the same
@@ -35,8 +36,9 @@ public:
     const std::filesystem::path& root() const { return root_; }
 
     // The folder holding the Vues of `location`; not created. Each name goes
-    // through vueFolderName(), and a Department named "Unsorted" gets a
-    // trailing '_' so it can't share the bucket's folder. Throws
+    // through vueFolderName(), and a Department named "Unsorted" or
+    // "Corbeille" gets a trailing '_' so it can't share the bucket's or the
+    // Corbeille's folder. Throws
     // std::invalid_argument when only some of department/TP/Échantillon are
     // given, or one has no usable characters.
     std::filesystem::path folder(const VueLocation& location) const;
@@ -86,6 +88,24 @@ public:
     // Vue image in one of this store's folders, or `to` is Unsorted or
     // refused by folder().
     std::filesystem::path fileVue(const std::filesystem::path& vue, const VueLocation& to) const;
+
+    // Where deleteVue() puts Vues: <root>/Corbeille. Not a location —
+    // nothing lists it, and no Vue there can be flagged, filed or deleted.
+    std::filesystem::path corbeille() const;
+
+    // Deletes `vue`, a Vue of this store, by moving it to the Corbeille under
+    // the same folders — <root>/Corbeille/GMP/TP 1_ Aciers/Ac1_ XC10/<name>,
+    // or <root>/Corbeille/Unsorted/<name> — and returns its path there.
+    // Nothing is erased (ADR 0004): a mistake is undone by moving its files
+    // back by hand, and emptying the Corbeille is left to whoever looks
+    // after the PC. Its files move together and are moved back when a move
+    // fails, as with fileVue(). A name already used in that Corbeille folder
+    // (the same Vue deleted, put back and deleted again) gets "-2", "-3"...
+    // before its extension. A Vue principale is unflagged. Throws
+    // std::invalid_argument, moving nothing, when `vue` is not an existing
+    // Vue image in one of this store's folders — one already in the
+    // Corbeille included — and std::runtime_error when a move fails.
+    std::filesystem::path deleteVue(const std::filesystem::path& vue) const;
 
 private:
     std::filesystem::path root_;

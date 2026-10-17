@@ -237,6 +237,11 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     panelLayout->addWidget(measureBox);
     panelLayout->addWidget(phaseBox);
     panelLayout->addStretch(1);
+    // At the bottom, away from the everyday buttons; the main window asks
+    // first, then moves the Vue to the Corbeille and closes this window.
+    auto* deleteVue = new QPushButton(tr("Supprimer la Vue…"));
+    deleteVue->setToolTip(tr("Déplace la Vue, avec ses traitements, dans la Corbeille du dossier des Vues."));
+    panelLayout->addWidget(deleteVue);
     auto* scroll = new QScrollArea;
     scroll->setWidget(panel);
     scroll->setWidgetResizable(true);
@@ -281,6 +286,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     connect(phaseMap_, &QPushButton::clicked, this, &VueWindow::showPhaseMap);
     connect(principale_, &QPushButton::clicked, this, &VueWindow::flagPrincipale);
     connect(exportCopy, &QPushButton::clicked, this, &VueWindow::exportCopy);
+    connect(deleteVue, &QPushButton::clicked, this, &VueWindow::deleteRequested);
 
     showSaved();
     refreshTreatments();
