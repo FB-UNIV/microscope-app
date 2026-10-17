@@ -215,14 +215,14 @@ int main(int argc, char** argv) {
         const cv::Mat img = cv::imread((fixtures / "CTTM1Ech2Vue1_crop256.png").string(), cv::IMREAD_UNCHANGED);
         check(!img.empty(), "a legacy crop to work on");
         const cv::Rect zone(40, 60, 160, 128);  // 31 % of 256x256
-        const PhaseAnalysis inZone = analyzePhasesInZone(img, zone);
+        const PhaseAnalysis inZone = analyzeVuePhases(img, zone);
         const PhaseAnalysis onCrop = analyzePhases(img(zone).clone());
         check(inZone.threshold.threshold == onCrop.threshold.threshold &&
                   inZone.threshold.tolerance == onCrop.threshold.tolerance &&
                   inZone.fractions.darkPercent == onCrop.fractions.darkPercent &&
                   inZone.fractions.errorPercent == onCrop.fractions.errorPercent,
               "a zone is analysed exactly as if it were the whole photo");
-        const PhaseAnalysis whole = analyzePhasesInZone(img, cv::Rect(0, 0, img.cols, img.rows));
+        const PhaseAnalysis whole = analyzeVuePhases(img, cv::Rect(0, 0, img.cols, img.rows));
         const PhaseAnalysis legacy = analyzePhases(img);
         check(whole.threshold.threshold == legacy.threshold.threshold &&
                   whole.fractions.darkPercent == legacy.fractions.darkPercent,
@@ -235,21 +235,31 @@ int main(int argc, char** argv) {
         cv::circle(dusty, cv::Point(450, 200), 90, cv::Scalar(30), cv::FILLED);
         const double darkWithDust = analyzePhases(dusty).fractions.darkPercent;
         const cv::Rect besideDust(0, 0, 300, 400);
-        const double darkBeside = analyzePhasesInZone(dusty, besideDust).fractions.darkPercent;
-        const double darkBesideClean = analyzePhasesInZone(synthesizeTwoPhaseSample(), besideDust).fractions.darkPercent;
+        const double darkBeside = analyzeVuePhases(dusty, besideDust).fractions.darkPercent;
+        const double darkBesideClean = analyzeVuePhases(synthesizeTwoPhaseSample(), besideDust).fractions.darkPercent;
         check(darkWithDust > darkBefore + 5.0 && darkBeside == darkBesideClean,
               "dust inflates the dark phase of the whole photo, not of a zone that leaves it out");
 
+        // A share of the image says nothing about how many grains a zone
+        // holds (hundreds at x5, a handful at x50): no size rule until the
+        // teacher sets one (#64). Only what the algorithm needs is refused.
         check(!phaseZoneProblem(zone, img.size()), "a zone of 31 % is accepted");
-        const auto tooSmall = phaseZoneProblem(cv::Rect(0, 0, 90, 90), img.size());
-        check(tooSmall && tooSmall->find("12 %") != std::string::npos && tooSmall->find("15 %") != std::string::npos,
-              "a zone under 15 % of the image is refused, saying how much it covers");
+        check(!phaseZoneProblem(cv::Rect(0, 0, 90, 90), img.size()) &&
+                  !phaseZoneProblem(cv::Rect(10, 10, 5, 5), img.size()),
+              "a small zone is accepted, down to the 5x5 pixels the algorithm needs");
+        PhaseAnalysis small;
+        check(throwsWith<std::invalid_argument>([&] { small = analyzeVuePhases(img, cv::Rect(0, 0, 90, 90)); })
+                      .empty() &&
+                  small.fractions.darkPercent + small.fractions.lightPercent > 99.0,
+              "and analysed like any other");
+        const auto tiny = phaseZoneProblem(cv::Rect(0, 0, 4, 40), img.size());
+        check(tiny && tiny->find("5x5") != std::string::npos, "a zone narrower than 5 pixels is refused, saying why");
         check(phaseZoneProblem(cv::Rect(200, 0, 100, 200), img.size()) &&
                   phaseZoneProblem(cv::Rect(-1, 0, 100, 200), img.size()) &&
                   phaseZoneProblem(cv::Rect(0, 0, 0, 200), img.size()),
               "a zone reaching outside the image, or empty, is refused");
-        check(!throwsWith<std::invalid_argument>([&] { analyzePhasesInZone(img, cv::Rect(0, 0, 90, 90)); }).empty(),
-              "analyzePhasesInZone refuses what phaseZoneProblem names");
+        check(!throwsWith<std::invalid_argument>([&] { analyzeVuePhases(img, cv::Rect(0, 0, 4, 40)); }).empty(),
+              "analyzeVuePhases refuses what phaseZoneProblem names");
 
         cv::Mat photo(100, 200, CV_8UC3, cv::Scalar(10, 120, 230));
         const cv::Rect mapped(50, 20, 100, 60);
@@ -278,6 +288,47 @@ int main(int argc, char** argv) {
         check(!throwsWith<std::invalid_argument>([] { PhaseOverlayTreatment(127, cv::Rect(0, 0, 0, 10)); }).empty() &&
                   !throwsWith<std::invalid_argument>([] { PhaseOverlayTreatment(127, cv::Rect(-5, 0, 10, 10)); }).empty(),
               "an empty zone, or one starting outside the image, is refused");
+    }
+
+    std::cout << "\n== A 4K capture is analysed at the legacy scale (ADR 0021) ==\n";
+    {
+        // The legacy edge detector compares neighbouring pixels. A 4K frame
+        // is soft at the pixel level, so its edges are spread over many
+        // pixels: scaled up 6.4x, the two-phase sample has no edge left
+        // the legacy algorithm can see.
+        const cv::Mat sharp = synthesizeTwoPhaseSample();  // 600x400, legacy-sized
+        cv::Mat soft4k;
+        cv::resize(sharp, soft4k, cv::Size(3840, 2560), 0, 0, cv::INTER_CUBIC);
+        const PhaseAnalysis reference = analyzePhases(sharp);
+        check(reference.threshold.found, "the legacy-sized sample has a Seuil");
+
+        const PhaseAnalysis raw = analyzePhases(soft4k);
+        check(!raw.threshold.found,
+              "on the soft 4K frame the legacy algorithm finds no edge: no Seuil, instead of a silent 127 ± 42");
+
+        const PhaseAnalysis scaled = analyzeVuePhases(soft4k);
+        check(scaled.threshold.found && std::abs(scaled.fractions.darkPercent - reference.fractions.darkPercent) < 2.0,
+              "analysed at the legacy scale, the 4K frame finds its Seuil and the sample's dark %");
+
+        const PhaseAnalysis legacySized = analyzeVuePhases(sharp);
+        check(legacySized.threshold.threshold == reference.threshold.threshold &&
+                  legacySized.fractions.darkPercent == reference.fractions.darkPercent,
+              "an image no wider than the legacy 1042 px is analysed as it is, bit-exact with the legacy app");
+
+        const cv::Rect half(0, 0, 1920, 2560);
+        cv::Mat halfReduced;
+        cv::resize(soft4k(half), halfReduced, cv::Size(), 1042.0 / 3840.0, 1042.0 / 3840.0, cv::INTER_AREA);
+        const PhaseAnalysis inHalf = analyzeVuePhases(soft4k, half);
+        const PhaseAnalysis onReduced = analyzePhases(halfReduced);
+        check(inHalf.threshold.found && inHalf.threshold.threshold == onReduced.threshold.threshold &&
+                  inHalf.fractions.darkPercent == onReduced.fractions.darkPercent,
+              "a zone is scaled like its frame, not by its own width");
+
+        check(phaseZoneProblem(cv::Rect(0, 0, 15, 15), soft4k.size()) && !phaseZoneProblem(cv::Rect(0, 0, 19, 19), soft4k.size()),
+              "on a 4K frame a zone needs about 19x19 pixels, 5x5 at the legacy scale");
+
+        const PhaseAnalysis blank = analyzeVuePhases(cv::Mat(780, 1042, CV_8UC3, cv::Scalar(128, 128, 128)));
+        check(!blank.threshold.found, "a blank image has no Seuil either, and says so");
     }
 
     std::cout << "\n== Legacy parity: CTTM TIFFs vs independent numpy reference ==\n";
