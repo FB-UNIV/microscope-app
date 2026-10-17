@@ -829,14 +829,21 @@ void MainWindow::calibrateGrossissement() {
         QMessageBox::information(this, tr("Calibration"), tr("La caméra n'est pas disponible."));
         return;
     }
-    auto* dialog = new MireDialog(grossissementChoices(setup_.config), grossissement(), this);
+    auto* dialog =
+        new MireDialog(grossissementChoices(setup_.config), grossissement(), setup_.config.mirePitchMicrons, this);
     const QPointer<MireDialog> guard(dialog);
     connect(dialog, &MireDialog::stillRequested, this, [this, guard] { requestStill(guard); });
     requestStill(guard);
     std::optional<Calibration> result;
-    if (dialog->exec() == QDialog::Accepted) result = dialog->result();
+    double mirePitch = setup_.config.mirePitchMicrons;
+    if (dialog->exec() == QDialog::Accepted) {
+        result = dialog->result();
+        mirePitch = dialog->pitchMicrons();
+    }
     delete dialog;
     if (!result) return;
+    // The workstation's mire, for next time (#65); saved with the Calibration.
+    setup_.config.mirePitchMicrons = mirePitch;
 
     if (const auto existing = setup_.config.calibration(result->grossissement)) {
         const auto answer = QMessageBox::question(
@@ -867,18 +874,21 @@ void MainWindow::requestStill(QPointer<MireDialog> dialog) {
     }
     jobs_->post([this, dialog](CaptureStation& station) {
         QImage still;
+        std::optional<cv::Vec2d> lineNormal;
         QString error;
         try {
-            still = toQImage(station.grabPreview());  // full size: the clicks are in its pixels
+            const cv::Mat frame = station.grabPreview();
+            still = toQImage(frame);  // full size: the clicks are in its pixels
+            lineNormal = mireLineNormal(frame);  // here, off the UI thread: a 4K frame takes a moment
         } catch (const std::exception& e) {
             error = QString::fromStdString(e.what());
         }
         QMetaObject::invokeMethod(
             this,
-            [dialog, still, error] {
+            [dialog, still, lineNormal, error] {
                 if (!dialog) return;
                 if (error.isEmpty()) {
-                    dialog->setStill(still);
+                    dialog->setStill(still, lineNormal);
                 } else {
                     dialog->stillFailed(error);
                 }
