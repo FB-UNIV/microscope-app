@@ -27,6 +27,10 @@ struct AutoThreshold {
     // scaled by 1/sqrt(2) as a visual marker — what the legacy histogram
     // window displayed.
     std::array<std::uint32_t, 256> histogram{};
+    // False when no edge stood out, so the histogram is empty: threshold and
+    // tolerance are then the legacy's defaults (127 ± 42) and mean nothing.
+    // The legacy app showed its numbers anyway; callers should not.
+    bool found = true;
 };
 
 // Phase area percentages (legacy denombre). Pixels inside
@@ -63,22 +67,30 @@ cv::Mat legacySmooth(const cv::Mat& grey);
 // with legacySmooth, then counted on the smoothed image.
 PhaseAnalysis analyzePhases(const cv::Mat& image);
 
-// Phase analysis on a zone of the Vue (#55): samples often carry dust,
-// inclusions or scratches that would count as a phase, so the operator can
-// leave them out — as long as the zone still holds enough grains to mean
-// something. The smallest zone accepted, as a share of the image area. A
-// placeholder until the teacher gives a figure.
-constexpr double kMinPhaseZoneFraction = 0.15;
+// The frame width the legacy algorithm was tuned on: the old camera's
+// 1042x780. Its edge detector compares neighbouring pixels, which a 4K
+// frame, soft at the pixel level, defeats (ADR 0021).
+constexpr int kLegacyFrameWidth = 1042;
 
-// Why `zone` can't be analysed on an image of `size`: not inside it, or
-// smaller than kMinPhaseZoneFraction of it. Empty when it can.
+// The smallest side, in pixels of an image of `size`, of a zone that can be
+// analysed: 5 pixels at the legacy scale, the size of legacySmooth's disk
+// (5 on a legacy-sized image, 19 on a 4K one).
+int minPhaseZoneSide(const cv::Size& size);
+
+// Why `zone` can't be analysed on an image of `size`: not inside it, or a
+// side shorter than minPhaseZoneSide(). Empty when it can. There is no rule
+// on how much of the image a zone covers (#55): a share of the image says
+// nothing about how many grains it holds; the teacher decides (#64).
 std::optional<std::string> phaseZoneProblem(const cv::Rect& zone, const cv::Size& size);
 
-// analyzePhases() of `zone` alone: the threshold is found and the phases
-// counted on that crop, exactly as if it were the whole photo. A zone
-// covering the whole image gives analyzePhases(image), still bit-exact with
-// the legacy app (ADR 0012). Throws std::invalid_argument with
-// phaseZoneProblem()'s reason.
-PhaseAnalysis analyzePhasesInZone(const cv::Mat& image, const cv::Rect& zone);
+// Phase analysis of a Vue (#55, ADR 0021): analyzePhases() of `zone`, or of
+// the whole image without one — samples often carry dust, inclusions or
+// scratches the operator can leave out. An image wider than
+// kLegacyFrameWidth is first scaled down to that width, and a zone by the
+// same factor as its frame, so the legacy algorithm sees edges as sharp as
+// on the old camera. An image no wider is analysed as it is, bit-exact with
+// the legacy app (ADR 0012). Check threshold.found before showing the
+// result. Throws std::invalid_argument with phaseZoneProblem()'s reason.
+PhaseAnalysis analyzeVuePhases(const cv::Mat& image, std::optional<cv::Rect> zone = std::nullopt);
 
 } // namespace msapp

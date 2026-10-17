@@ -180,9 +180,8 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     // Phase analysis, on the whole photo or on a zone of it (#55).
     auto* chooseZone = new QPushButton(tr("Choisir une zone…"));
     chooseZone->setToolTip(tr("Deux clics aux coins opposés : l'analyse ne porte que sur cette zone, pour laisser de "
-                              "côté poussières et inclusions. Elle doit couvrir au moins %1 % de l'image, pour "
-                              "compter assez de grains.")
-                               .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
+                              "côté poussières et inclusions. Plus la zone est petite, moins elle compte de grains et "
+                              "moins le pourcentage est sûr."));
     auto* wholeImage = new QPushButton(tr("Toute l'image"));
     zoneLabel_ = new QLabel;
     zoneLabel_->setWordWrap(true);
@@ -376,12 +375,9 @@ void VueWindow::clicked(QPointF point) {
         tool_.reset();
         clicks_.clear();
         if (phaseZoneProblem(zone, size)) {
-            const double share = 100.0 * zone.area() / (static_cast<double>(size.width) * size.height);
             QMessageBox::warning(this, tr("Zone refusée"),
-                                 tr("Cette zone couvre %1 % de l'image ; il en faut au moins %2 % pour compter assez "
-                                    "de grains.")
-                                     .arg(share, 0, 'f', 0)
-                                     .arg(static_cast<int>(kMinPhaseZoneFraction * 100.0)));
+                                 tr("Zone trop petite pour l'analyse : il faut au moins %1 × %1 pixels.")
+                                     .arg(minPhaseZoneSide(size)));
             refreshZone();
             return;
         }
@@ -424,10 +420,20 @@ void VueWindow::analysePhases() {
     try {
         const WaitCursor wait;
         // On the photo as captured: Levels would shift the grey levels, and the
-        // Échelle's bar and the phase map would be counted as phases.
-        phases_ = zone_ ? analyzePhasesInZone(vue_.original(), *zone_) : analyzePhases(vue_.original());
+        // Échelle's bar and the phase map would be counted as phases. A 4K
+        // photo is analysed at the legacy camera's scale (ADR 0021).
+        phases_ = analyzeVuePhases(vue_.original(), zone_);
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Analyse de phases"), QString::fromStdString(e.what()));
+        return;
+    }
+    if (!phases_->threshold.found) {
+        // The legacy app printed its default 127 ± 42 and a meaningless %.
+        phases_.reset();
+        histogram_->clear();
+        phaseMap_->setEnabled(false);
+        phaseResult_->setText(tr("Seuil introuvable : l'image n'a pas de contours assez nets entre les phases "
+                                 "(floue, sans contraste ou vide). Aucun pourcentage n'est donné."));
         return;
     }
     const PhaseFractions& f = phases_->fractions;

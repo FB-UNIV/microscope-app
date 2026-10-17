@@ -14,7 +14,7 @@ namespace msapp {
 // swap here if teachers remember the old colours the other way round. The
 // map was judged right at the first lab session (2026-10-16).
 //
-// With a zone (#55, analyzePhasesInZone) only that zone is mapped, outlined
+// With a zone (#55, analyzeVuePhases) only that zone is mapped, outlined
 // in cyan; the rest of the photo shows as it is. The zone is kept in the
 // sidecar, so reopening the Vue analyses the same zone again.
 class PhaseOverlayTreatment : public Treatment {

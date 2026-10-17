@@ -101,9 +101,11 @@ one.
   default), and *Analyse de phases* (CALCUL, percentages, histogram with
   the Seuil, the phase map as a Treatment). *Choisir une zone…* (two
   clicks, opposite corners) restricts CALCUL and the map to a zone that
-  leaves dust and inclusions out; it must cover at least 15 % of the image
-  (`kMinPhaseZoneFraction`, until the teacher gives a figure) and is saved
-  with the map, outlined in cyan. Measuring is refused on an
+  leaves dust and inclusions out; any zone of at least 5x5 pixels at the
+  legacy scale is accepted (no size rule until the teacher sets one, #64),
+  and it is saved with the map, outlined in cyan. A 4K photo is analysed at
+  the legacy camera's 1042 px width (ADR 0021); when no Seuil can be found
+  the app says so instead of giving a %. Measuring is refused on an
   uncalibrated Vue. *Exporter une copie* writes the Vue with its
   Treatments as PNG, TIFF or JPEG; the photo and sidecar are untouched.
 - **Filing Vues.** *Classer la Vue…* moves the selected Vue, with its
