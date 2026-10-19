@@ -34,7 +34,8 @@ class ImageView;
 // - Phase analysis: CALCUL, the percentages, the histogram with the Seuil —
 //   on the whole photo or on a zone picked with two clicks (#55), kept with
 //   the phase map in the sidecar;
-// - flagging it as its Échantillon's Vue principale (ADR 0016).
+// - flagging it as its Échantillon's Vue principale (ADR 0016);
+// - asking the main window to delete it (to the Corbeille).
 class VueWindow : public QMainWindow {
     Q_OBJECT
 
@@ -45,6 +46,8 @@ public:
 
 signals:
     void principaleChanged();
+    // "Supprimer la Vue…" was clicked; the main window confirms and deletes.
+    void deleteRequested();
 
 private:
     enum class Tool { Length, Vickers, Zone };

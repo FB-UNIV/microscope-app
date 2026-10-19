@@ -95,6 +95,9 @@ one.
   a message and *Reconnecter la caméra* (F5).
 - **Vues.** The right panel lists the Échantillon's Vues, newest first;
   *★ Choisir comme Vue principale* flags the one for the Fiche.
+  *Masquer les Vues* (F9) hides the panel for a bigger live view; the
+  toolbars still show the Échantillon and Grossissement, capture works the
+  same, and the choice is remembered in `ui.ini` beside `workstation.json`.
   Double-click opens a Vue: Levels with a live preview, the Échelle,
   removing a Treatment (all saved in the sidecar at once), *Mesurer une
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
@@ -114,10 +117,18 @@ one.
   (Unsorted, ADR 0008) are listed with *Vues non classées (N)* above the
   list, until every one is filed. A Vue open in its own window must be
   closed first.
+- **Deleting Vues.** *Supprimer la Vue…* (button, right-click, or Suppr in
+  the list; also in the Vue's own window) asks first, then moves the Vue
+  with its Treatments to `Corbeille/` in the Vue folder, under the same
+  *Département / TP / Échantillon* folders (`VueStore::deleteVue`). Nothing
+  is erased: move its files back to recover it. A deleted Vue principale
+  is unflagged, and a window open on it closes. Who may delete is not
+  restricted yet.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
   an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
-  Treatments and Échelle, its name and Grossissement, two per row, as few
-  pages as fit (`layoutFiche()`: eight 16:9 photos per page). An
+  Treatments and Échelle, its name and Grossissement, three per page, one
+  per row (`layoutFiche()`, ADR 0019: a 16:9 photo prints about 133 × 75
+  mm). An
   Échantillon without a Vue principale gets an empty frame, and the app
   lists them before writing. Then open the PDF to print it (ADR 0010).
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
