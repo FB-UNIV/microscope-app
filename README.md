@@ -202,18 +202,8 @@ previous version.
 
 ## Trying it without a microscope
 
-1. **Get the app.** CI builds the Windows bundle on every push. Take a
-   green run on `master`, then download its `microscope_app-windows`
-   artifact (you must be logged in to GitHub):
-
-   ```
-   gh run list --repo FB-UNIV/microscope-app --branch master --workflow ci.yml --status success --limit 1
-   gh run download <run> --repo FB-UNIV/microscope-app --name microscope_app-windows
-   ```
-
-   `<run>` is the number the first command prints. Unblock and extract the
-   zip as for `camera_probe` ([camera-probe.md](docs/hardware/camera-probe.md),
-   step 2.1).
+1. **Get the app.** Download `microscope_app-windows-<build>.zip` from the
+   `latest` release, unblock and extract it (see *Getting a test build*).
 2. **Replay lab frames as the camera.** `microscope_app.exe --replay
    frame.png` (repeat `--replay` for several images) previews the image
    instead of a camera; *Capturer* files it as a Vue. The 4K frames of
