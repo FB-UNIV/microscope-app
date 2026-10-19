@@ -7,7 +7,7 @@ Replacement for the legacy Matrox-based metallography imaging tool. Captures pho
 ### Imaging
 
 **Grossissement**:
-The physical objective in use for a given photo (e.g. 4x/10x/40x/100x). Selected by the operator, not measured by the app.
+The physical objective in use for a given photo, named by its magnification (e.g. x5, x10, x20, x50). Selected by the operator, not measured by the app.
 _Avoid_: Magnification level, zoom
 
 **Calibration**:
@@ -23,15 +23,19 @@ An interactive tool: operator selects two points on a photo, app converts the pi
 _Avoid_: Échelle (that's the overlay; this is the point-to-point reading)
 
 **Phase analysis**:
-Area percentage of the dark vs light phase on a Vue (legacy "Pourcentage des constituants" / CALCUL button) — e.g. pearlite vs ferrite in a steel, from which students estimate carbon content. Computed by the legacy algorithm, ported bit-exact (ADR 0012): an automatic Seuil, then pixels within ± the tolerance band count half to each phase, and that band's share is reported as the error.
+Area percentage of the dark vs light phase on a Vue (legacy "Pourcentage des constituants" / CALCUL button) — e.g. pearlite vs ferrite in a steel, from which students estimate carbon content. Computed by the legacy algorithm, ported bit-exact (ADR 0012): an automatic Seuil, then pixels within ± the tolerance band count half to each phase, and that band's share is reported as the error. Runs on the whole Vue or on a Zone. A photo wider than the legacy camera's 1042 px (e.g. the A5's 4K frames) is analysed on a copy scaled down to that width, because the legacy edge detector finds no edges on soft 4K frames; the phase map is still drawn on the full photo (ADR 0021).
 _Avoid_: Segmentation, Classification (no per-grain labelling happens), Denombrement (legacy function name)
 
 **Seuil**:
-The grey level separating the two phases in a Phase analysis, plus its tolerance band. Found automatically from the grey levels of edge pixels; shown on the Vue as a two-colour phase overlay (a Treatment).
+The grey level separating the two phases in a Phase analysis, plus its tolerance band. Found automatically from the grey levels of edge pixels; shown on the Vue as a two-colour phase overlay (a Treatment). When the image has no edges sharp enough (blurred, flat or empty), no Seuil is found: the app says *Seuil introuvable* and gives no percentage, where the legacy app silently fell back to 127 ± 42 (ADR 0021).
 _Avoid_: Threshold in UI text (French UI), Binarisation
 
+**Zone**:
+The rectangle of a Vue a Phase analysis is restricted to, drawn by the operator to leave dust, inclusions or scratches out. Any size of at least 5×5 pixels at the legacy scale (19×19 on a 4K frame, the size of the legacy smoothing disk) is accepted; whether a zone needs a minimum size, and in what unit, is the teacher's call (#64). Saved with the phase map Treatment in the sidecar, so reopening the Vue analyses the same zone; outlined in cyan on the map. No zone means the whole Vue.
+_Avoid_: Région, ROI, Sélection
+
 **Dureté Vickers**:
-Hardness from the two diagonals of a pyramid indent, measured on a Vue with the Measurement tool: HV = 1.85409 × load / mean diagonal² (legacy coefficient, ADR 0012). The legacy app fixed the load at 0.5 kgf (HV0.5).
+Hardness from the two diagonals of a pyramid indent, measured on a Vue with the Measurement tool: HV = 1.85409 × load / mean diagonal² (legacy coefficient, ADR 0012). The legacy app fixed the load at 0.5 kgf (HV0.5); the app defaults to it and lets the operator pick another load (which loads the TP uses: #64).
 _Avoid_: Hardness alone (several scales exist), Brinell/Rockwell (different tests)
 
 **White reference**:
@@ -39,7 +43,7 @@ R/G/B gains measured once per microscope from a blank field (lamp on, no specime
 _Avoid_: White balance (the camera's own colour-temperature control, locked separately), Calibration (reserved for px/µm)
 
 **Camera profile**:
-A workstation's camera settings — capture API, frame size, pixel format, exposure, colour temperature, White reference — re-applied every time the camera opens, because the Moticam A5 keeps whatever the last program set.
+A workstation's camera settings — capture API, frame size, pixel format, exposure, colour temperature, White reference — re-applied every time the camera opens, because the Moticam A5 keeps whatever the last program set. For the A5: DirectShow, 3840×2160 MJPG, exposure fixed at 7.8 ms, 5000 K; brightness is set with the lamp knob (`docs/hardware/camera-probe.md`).
 _Avoid_: Camera settings dialog, Driver settings
 
 ### Session organisation
@@ -61,7 +65,7 @@ One saved photo (+ its Treatments) attached to an Échantillon. Legacy app cappe
 _Avoid_: Photo (a Vue is the photo in its TP/Échantillon context, not just an image file)
 
 **Unsorted**:
-A fallback bucket for Vues captured before a workstation has ever synced real Department/TP/Échantillon structure (first launch, offline). Deliberately breaks the normal Vue→Échantillon invariant — filed properly once the machine syncs.
+A fallback bucket for Vues captured before a workstation has ever synced real Department/TP/Échantillon structure (first launch, offline). Deliberately breaks the normal Vue→Échantillon invariant — filed properly once the machine syncs. In Phase 1, Vues go there while no `catalog.json` exists, and are filed by hand once it does (ADR 0008).
 _Avoid_: none — this is intentionally the escape hatch, not a normal state
 
 **Corbeille**:

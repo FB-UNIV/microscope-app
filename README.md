@@ -48,6 +48,8 @@ defaults with an error instead of blocking the app; the next save keeps it
 aside as `workstation.json.unreadable` (ADR 0004).
 `calibrationForFrame(grossissement, width, height)` refuses a Calibration
 measured at another frame size than the camera delivers (ADR 0015).
+The A5 profile fixes the exposure at 7.8 ms, measured through the
+microscope; brightness is set with the lamp knob.
 
 `VueStore` files every capture under a new, never-reused path:
 `<root>/<Department>/<TP>/<Échantillon>/<UTC time>_<random>.tiff`, or
@@ -73,6 +75,19 @@ a bare string. Names that would share a folder (`Ac1: XC10` and `Ac1/ XC10`,
 or `GMP` and `gmp`) are refused with both names. No file means no
 catalog, and captures go to Unsorted (ADR 0008). In Phase 2 the same file
 becomes the cache of what the API serves (ADR 0007).
+
+**Tried in the lab.** On 2026-10-16 the A5 was probed through the
+microscope (probe round 2, [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md)),
+and the app was used at a first lab session with a teacher: capture, the
+White reference, an x5 Calibration on the mire, and Phase analysis (the
+teacher judged the phase map and its colours right). The teacher's
+feedback was merged on 2026-10-19: three Vues per Fiche page (ADR 0019),
+hiding the side panel, deleting a Vue to the Corbeille, one Calibration
+for every objective (ADR 0020), the mire's period as a setting, Phase
+analysis on a zone and at the legacy scale (ADR 0021), and measurement
+points that can be dragged. Not tried in the lab yet: printing a Fiche, a
+derived Calibration checked against the mire, and a real Vickers indent
+(see *Next steps*).
 
 **Not yet built:** a catalog editor inside the app, and everything in
 ADRs 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2,
@@ -182,10 +197,44 @@ previous version.
 - **Demo PC.** These options override the config for one run without
   changing it: `--device N` (a laptop's own webcam is often 0), `--api
   dshow|msmf|auto`, `--size WxH` (`0x0` = device default), and `--replay
-  IMAGE` (repeatable) to work on image files with no camera at all. With no
-  microscope, `python tools/make_mire.py --pitch 31 --out mire.png` draws a
-  20 µm mire at 1.55 px/µm to calibrate on (`--replay mire.png`); then
-  replay a lab frame to capture with that Calibration.
+  IMAGE` (repeatable) to work on image files with no camera at all (see
+  below).
+
+## Trying it without a microscope
+
+1. **Get the app.** CI builds the Windows bundle on every push. Take a
+   green run on `master`, then download its `microscope_app-windows`
+   artifact (you must be logged in to GitHub):
+
+   ```
+   gh run list --repo FB-UNIV/microscope-app --branch master --workflow ci.yml --status success --limit 1
+   gh run download <run> --repo FB-UNIV/microscope-app --name microscope_app-windows
+   ```
+
+   `<run>` is the number the first command prints. Unblock and extract the
+   zip as for `camera_probe` ([camera-probe.md](docs/hardware/camera-probe.md),
+   step 2.1).
+2. **Replay lab frames as the camera.** `microscope_app.exe --replay
+   frame.png` (repeat `--replay` for several images) previews the image
+   instead of a camera; *Capturer* files it as a Vue. The 4K frames of
+   probe round 2 (e.g. `r2-exp9\camera_probe_index0.png`, a
+   ferrite–pearlite steel at x5; not in the repo) suit Phase analysis.
+3. **Calibrate on a synthetic mire.** `python tools/make_mire.py --pitch 31
+   --out mire.png` (Python with numpy and opencv-python) draws the lab's
+   20 µm mire at 1.55 px/µm, about what the A5 sees at x5, at the A5's
+   3840×2160. Run `microscope_app.exe --replay mire.png`, calibrate x5 in
+   *Poste › Calibrer un grossissement sur la mire*, and the reading should
+   come back at 1.55 px/µm. `--mire-microns` draws a mire of another
+   period; set the same period in the dialog. Then restart with `--replay`
+   on a lab frame of the same size: x5 captures get that Calibration, the
+   other objectives one derived from it (ADR 0020). A Calibration only
+   applies to frames of the size it was measured at (ADR 0015): for
+   1080p frames, draw the mire with `--size 1920x1080`.
+
+`--replay` uses the Windows user's own `workstation.json` and Vue folder,
+so try this on a PC that is not a lab workstation, or under another
+Windows user: calibrating on the synthetic mire would replace that
+microscope's real Calibration.
 
 ## Building
 
@@ -211,7 +260,7 @@ Qt, OpenCV and MSVC runtime DLLs), built with the Qt version pinned in
 overrides it; a tree without git says `unknown`).
 
 `test_pipeline` synthesizes a low-contrast test image (standing in for a
-real capture until real hardware is available), runs it through Levels +
+real capture, so the test needs no camera), runs it through Levels +
 Échelle, saves it as a Vue, reloads the Vue from disk, and checks the
 reload round-trips pixel-identically. Output images land in
 `msapp_pipeline_test/` under the system temp directory (the test prints
@@ -233,19 +282,31 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
 
 ## Next steps
 
-1. On a lab PC with a Moticam A5 plugged in (MotiConnect closed), run
-   `camera_probe` and `camera_probe --api dshow`, then retry with
-   `--size WIDTHxHEIGHT` / `--mjpg` until the full sensor resolution comes
-   back; record the working capture API, size and pixel format (ADR 0013).
-   Step-by-step guide, including where to download the ready-to-run
-   Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
-2. Try the capture app on that PC with a real session: write `catalog.json`,
-   measure the White reference, calibrate one objective on the mire,
-   capture, then check a Measurement against the mire and Phase analysis
-   against an archived result. Confirm the phase-map colours with a
-   teacher (#25: the legacy plane order was inferred).
-3. Print a Fiche on the lab printer and check the Échelle bar against the
-   mire on paper.
+1. **Lab session 2**, on the lab PC with the latest bundle (MotiConnect
+   closed):
+   - In that PC's existing `workstation.json`
+     (`%LOCALAPPDATA%\microscope-app\`), set `"exposure_ms": 7.8125`: a
+     file saved before the exposure was fixed keeps `null` (camera auto).
+     Before changing it, one check for
+     [#14](https://github.com/FB-UNIV/microscope-app/issues/14): after a
+     run at a manual exposure (`camera_probe --exposure -9`), the app with
+     `null` should put the camera back in auto exposure.
+   - Print a Fiche on the lab printer and check the Échelle bar against
+     the mire on paper.
+   - Check a derived Calibration against the mire: with only x5
+     calibrated, capture the mire at x10, measure across N periods with
+     *Mesurer une longueur* and compare with N × 20 µm (ADR 0020).
+   - Photograph a real Vickers indent and read its hardness
+     ([#24](https://github.com/FB-UNIV/microscope-app/issues/24)).
+   - Note whether the capture banner names any camera setting not
+     granted, and whether a blank field comes out neutral after the White
+     reference ([#15](https://github.com/FB-UNIV/microscope-app/issues/15)).
+2. **Meet the teacher** with the questions in
+   [#64](https://github.com/FB-UNIV/microscope-app/issues/64): a minimum
+   zone size for Phase analysis, derived Calibrations, Vickers loads,
+   what the Fiche shows, who may delete a Vue, how TPs are organised.
+3. **Phase 2**: the backend and sync (ADRs 0004–0008,
+   [#32](https://github.com/FB-UNIV/microscope-app/issues/32)–[#35](https://github.com/FB-UNIV/microscope-app/issues/35)).
 
 Phase-analysis parity always runs (CI included) on three 256×256 crops of
 legacy views in `tests/fixtures/legacy/`. The full-size checks run against
