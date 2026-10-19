@@ -64,9 +64,12 @@ QString captureText(const Vue& vue) {
     lines << VueWindow::tr("Fichier : %1").arg(toQString(vue.imagePath().filename()));
     lines << VueWindow::tr("Image : %1x%2").arg(vue.original().cols).arg(vue.original().rows);
     if (const auto& calibration = vue.calibration()) {
-        lines << VueWindow::tr("Calibration : %1, %2 px/µm")
+        lines << VueWindow::tr("Calibration : %1, %2 px/µm%3")
                      .arg(QString::fromStdString(calibration->grossissement))
-                     .arg(calibration->pixelsPerMicron, 0, 'f', 4);
+                     .arg(calibration->pixelsPerMicron, 0, 'f', 4)
+                     .arg(calibration->isDerived()
+                              ? VueWindow::tr(" (déduite de %1)").arg(QString::fromStdString(calibration->derivedFrom))
+                              : QString());
     } else {
         lines << VueWindow::tr("Sans Calibration : ni Échelle ni mesure.");
     }
@@ -233,6 +236,11 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     panelLayout->addWidget(measureBox);
     panelLayout->addWidget(phaseBox);
     panelLayout->addStretch(1);
+    // At the bottom, away from the everyday buttons; the main window asks
+    // first, then moves the Vue to the Corbeille and closes this window.
+    auto* deleteVue = new QPushButton(tr("Supprimer la Vue…"));
+    deleteVue->setToolTip(tr("Déplace la Vue, avec ses traitements, dans la Corbeille du dossier des Vues."));
+    panelLayout->addWidget(deleteVue);
     auto* scroll = new QScrollArea;
     scroll->setWidget(panel);
     scroll->setWidgetResizable(true);
@@ -283,6 +291,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     connect(phaseMap_, &QPushButton::clicked, this, &VueWindow::showPhaseMap);
     connect(principale_, &QPushButton::clicked, this, &VueWindow::flagPrincipale);
     connect(exportCopy, &QPushButton::clicked, this, &VueWindow::exportCopy);
+    connect(deleteVue, &QPushButton::clicked, this, &VueWindow::deleteRequested);
 
     showSaved();
     refreshTreatments();

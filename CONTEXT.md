@@ -11,7 +11,7 @@ The physical objective in use for a given photo (e.g. 4x/10x/40x/100x). Selected
 _Avoid_: Magnification level, zoom
 
 **Calibration**:
-The pixels-per-µm ratio tied to one Grossissement and to the frame size it was measured at. Set once per objective (against a mire reticle), reused for every future photo taken at that Grossissement and frame size. Applying it to an image of another size is refused, never rescaled (ADR 0015): if the camera falls back to another mode, restore the mode or recalibrate. Each Vue keeps the Calibration it was captured with in its sidecar; recalibrating changes only future Vues. The legacy app instead kept one sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler) and multiplied it by the objective; per-objective Calibration is more accurate. The legacy mire has a 20 µm pitch; recalibrate until two readings agree within 0.25 %.
+The pixels-per-µm ratio tied to one Grossissement and to the frame size it was measured at. Measuring one objective against the mire is enough: every other Grossissement gets a Calibration *derived* from it by the ratio of magnifications (x10 = 2 × x5), as the legacy app did with its single sensor-plane constant ("Résolution vidéo", 288.65 px/mm for its Basler, multiplied by the objective) (ADR 0020). An objective measured on the mire uses its own Calibration, which is more accurate; the others derive from the one measured most recently. Applying a Calibration to an image of another size is refused, never rescaled (ADR 0015): if the camera falls back to another mode, restore the mode or recalibrate. Each Vue keeps the Calibration it was captured with in its sidecar, derived or not; recalibrating changes only future Vues. The lab's mire has a 20 µm period (the gap between two neighbouring lines; another mire's period is set in the calibration dialog); only the distance across its lines counts, so the two clicks need not be level. Recalibrate until two readings agree within 0.25 %.
 _Avoid_: Resolution (legacy TIFF-tag term from the old app, ambiguous with image resolution)
 
 **Échelle**:
@@ -64,8 +64,12 @@ _Avoid_: Photo (a Vue is the photo in its TP/Échantillon context, not just an i
 A fallback bucket for Vues captured before a workstation has ever synced real Department/TP/Échantillon structure (first launch, offline). Deliberately breaks the normal Vue→Échantillon invariant — filed properly once the machine syncs.
 _Avoid_: none — this is intentionally the escape hatch, not a normal state
 
+**Corbeille**:
+Where a deleted Vue goes, with its Treatments: a `Corbeille` folder in the Vue folder, under the same Department/TP/Échantillon folders it was filed in. Nothing is erased (ADR 0004), so a Vue deleted by mistake is recovered by moving its files back; the app lists nothing from it. A deleted Vue principale is unflagged.
+_Avoid_: Trash, Bin (English UI words), Supprimées
+
 **Fiche**:
-A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar, laid out on as few A4 pages as fit (ADR 0016). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
+A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar (ADR 0016), three per A4 page, one per row (ADR 0019). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
 _Avoid_: Report (less specific), Print (that's the action, not the artifact)
 
 **Vue principale**:

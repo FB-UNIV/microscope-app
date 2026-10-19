@@ -37,8 +37,9 @@ is migrated from the legacy app (ADR 0018).
 
 Each workstation keeps its `WorkstationConfig` — the camera profile (capture
 API, frame size, pixel format, exposure, colour temperature), the White
-reference, and one Calibration per Grossissement with the frame size it was
-measured at — in `workstation.json` under the per-user *local* app data
+reference, and the Calibrations measured on the mire, each with the frame
+size it was measured at (every other Grossissement is derived from the one
+measured last, ADR 0020) — in `workstation.json` under the per-user *local* app data
 folder (`defaultWorkstationConfigPath()`: `%LOCALAPPDATA%\microscope-app\`
 on Windows, so it never roams to another lab PC; `$XDG_CONFIG_HOME` or
 `~/.config` elsewhere). First launch loads the Moticam A5 profile with no
@@ -95,6 +96,9 @@ one.
   a message and *Reconnecter la caméra* (F5).
 - **Vues.** The right panel lists the Échantillon's Vues, newest first;
   *★ Choisir comme Vue principale* flags the one for the Fiche.
+  *Masquer les Vues* (F9) hides the panel for a bigger live view; the
+  toolbars still show the Échantillon and Grossissement, capture works the
+  same, and the choice is remembered in `ui.ini` beside `workstation.json`.
   Double-click opens a Vue: Levels with a live preview, the Échelle,
   removing a Treatment (all saved in the sidecar at once), *Mesurer une
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
@@ -119,21 +123,38 @@ one.
   (Unsorted, ADR 0008) are listed with *Vues non classées (N)* above the
   list, until every one is filed. A Vue open in its own window must be
   closed first.
+- **Deleting Vues.** *Supprimer la Vue…* (button, right-click, or Suppr in
+  the list; also in the Vue's own window) asks first, then moves the Vue
+  with its Treatments to `Corbeille/` in the Vue folder, under the same
+  *Département / TP / Échantillon* folders (`VueStore::deleteVue`). Nothing
+  is erased: move its files back to recover it. A deleted Vue principale
+  is unflagged, and a window open on it closes. Who may delete is not
+  restricted yet.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
   an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
-  Treatments and Échelle, its name and Grossissement, two per row, as few
-  pages as fit (`layoutFiche()`: eight 16:9 photos per page). An
+  Treatments and Échelle, its name and Grossissement, three per page, one
+  per row (`layoutFiche()`, ADR 0019: a 16:9 photo prints about 133 × 75
+  mm). An
   Échantillon without a Vue principale gets an empty frame, and the app
   lists them before writing. Then open the PDF to print it (ADR 0010).
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
-  on), *Calibrer un grossissement sur la mire* (click a line of the 20 µm
-  mire and the line N periods further, until two readings agree within
-  0.25 %), *Modifier / Recharger le catalogue de TP*, *Ouvrir le dossier des
-  Vues*. Settings are saved to `workstation.json`.
+  on), *Calibrer un grossissement sur la mire* (click a line of the mire
+  and the line N periods further — a period is the gap between two
+  neighbouring lines, 20 µm on the lab's mire, set in the dialog for
+  another mire and kept in `workstation.json` — until two readings agree
+  within 0.25 %. Only the distance across the lines counts, in the
+  direction found in the image, so the clicks need not be level. One
+  objective is enough, the others are derived from it by their
+  magnification and the toolbar shows "déduit de x5", ADR 0020), *Modifier /
+  Recharger le catalogue de TP*, *Ouvrir le dossier des Vues*. Settings are
+  saved to `workstation.json`.
 - **Demo PC.** These options override the config for one run without
   changing it: `--device N` (a laptop's own webcam is often 0), `--api
   dshow|msmf|auto`, `--size WxH` (`0x0` = device default), and `--replay
-  IMAGE` (repeatable) to work on image files with no camera at all.
+  IMAGE` (repeatable) to work on image files with no camera at all. With no
+  microscope, `python tools/make_mire.py --pitch 31 --out mire.png` draws a
+  20 µm mire at 1.55 px/µm to calibrate on (`--replay mire.png`); then
+  replay a lab frame to capture with that Calibration.
 
 ## Building
 
@@ -172,7 +193,7 @@ tests/               Test harness (no test framework dependency — plain assert
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
 docs/legacy/         Reverse-engineering report of the legacy Metal exe + legacy→new gap analysis
-tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port
+tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port; make_mire.py — synthetic mire to calibrate without a microscope
 tests/fixtures/      256×256 crops of legacy views for the phase-analysis parity test
 ```
 
@@ -185,7 +206,7 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
 2. Try the capture app on that PC with a real session: write `catalog.json`,
-   measure the White reference, calibrate each objective on the mire,
+   measure the White reference, calibrate one objective on the mire,
    capture, then check a Measurement against the mire and Phase analysis
    against an archived result. Confirm the phase-map colours with a
    teacher (#25: the legacy plane order was inferred).

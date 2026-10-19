@@ -123,7 +123,8 @@ int main() {
               "DirectShow at index 0 — the only API exposing white balance");
         check(a5.width == 3840 && a5.height == 2160 && a5.pixelFormat == "MJPG", "3840x2160 MJPG");
         check(a5.whiteBalanceKelvin && *a5.whiteBalanceKelvin == 5000.0, "colour temperature locked at 5000 K");
-        check(!a5.exposureMs, "exposure left to the camera until measured through a microscope");
+        check(a5.exposureMs && *a5.exposureMs == 7.8125,
+              "exposure fixed at 7.8 ms, DirectShow's -7, as measured at x5 through the microscope");
         check(a5.whiteReference.isIdentity(), "White reference identity until calibrated");
         check(makeCamera(a5)->backend() == "opencv", "builds without a camera attached");
     }

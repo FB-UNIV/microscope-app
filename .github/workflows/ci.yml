@@ -60,9 +60,30 @@ jobs:
       - uses: actions/checkout@v7
 
       # Pinned: this job also builds the camera_probe bundle shipped to lab
-      # PCs, so OpenCV must not change between two runs. Bump on purpose.
+      # PCs, so OpenCV must not change between two runs. Bump on purpose (and
+      # the cache key with it).
+      #
+      # The Chocolatey feed often answers 503/504, which failed most Windows
+      # runs on 2026-10-16/19: the extracted build is cached between runs,
+      # and a cold install is retried with growing pauses.
+      - name: Cache OpenCV
+        id: opencv-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\tools\opencv\build
+          key: opencv-4.13.0-windows-build
+
       - name: Install OpenCV (official prebuilt binaries)
-        run: choco install opencv --version 4.13.0 --no-progress -y
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        run: |
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            choco install opencv --version 4.13.0 --no-progress -y
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            $pause = 30 * $attempt
+            Write-Host "choco install failed (attempt $attempt of 5), retrying in $pause s"
+            Start-Sleep -Seconds $pause
+          }
+          exit 1
 
       - name: Locate OpenCV
         run: |
