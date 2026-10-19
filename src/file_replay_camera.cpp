@@ -16,6 +16,7 @@ void FileReplayCamera::open() {
             throw std::runtime_error("FileReplayCamera: missing frame " + frame.string());
         }
     }
+    decoded_.assign(frames_.size(), cv::Mat());
     next_ = 0;
     open_ = true;
 }
@@ -28,13 +29,16 @@ cv::Mat FileReplayCamera::grab() {
     if (!open_) {
         throw std::runtime_error("FileReplayCamera::grab: camera is not open");
     }
-    const auto& frame = frames_[next_];
+    const std::size_t index = next_;
     next_ = (next_ + 1) % frames_.size();
-    cv::Mat image = cv::imread(frame.string(), cv::IMREAD_COLOR);
+    cv::Mat& image = decoded_[index];
     if (image.empty()) {
-        throw std::runtime_error("FileReplayCamera::grab: could not decode " + frame.string());
+        image = cv::imread(frames_[index].string(), cv::IMREAD_COLOR);
+        if (image.empty()) {
+            throw std::runtime_error("FileReplayCamera::grab: could not decode " + frames_[index].string());
+        }
     }
-    return image;
+    return image.clone();
 }
 
 } // namespace msapp

@@ -49,6 +49,7 @@ public:
     bool isOpen() const override { return open_; }
     cv::Mat grab() override {
         if (!open_) throw std::runtime_error("FakeCamera: not open");
+        ++grabs;
         return frame_.clone();
     }
     cv::Size frameSize() const override { return open_ ? frame_.size() : cv::Size(); }
@@ -59,6 +60,7 @@ public:
     bool enableAutoWhiteBalance() override { return record("auto_wb"); }
 
     std::vector<std::string> calls;
+    int grabs = 0;
 
 private:
     bool record(const std::string& call) {
@@ -200,6 +202,28 @@ int main() {
             threw = true;
         }
         check(threw, "capturing onto an existing path still refuses (Vues are immutable-by-path)");
+    }
+
+    std::cout << "\n== Live preview: shrunk for the window, then white-balanced ==\n";
+    {
+        auto fake = std::make_unique<FakeCamera>(cv::Mat(60, 80, CV_8UC3, kTint), true);
+        FakeCamera* cam = fake.get();
+        CaptureStation station(std::move(fake), lockedProfile());
+        station.open();
+        station.calibrateWhiteReference();
+
+        const CaptureStation::LivePreview live = station.grabLivePreview(cv::Size(40, 40));
+        check(live.grabbedSize == cv::Size(80, 60), "it reports the frame as grabbed, what a Calibration must match");
+        check(live.image.size() == cv::Size(40, 30), "the image is shrunk to fit the window, aspect ratio kept");
+        const cv::Vec3b px = live.image.at<cv::Vec3b>(5, 5);
+        check(std::abs(px[0] - 120) <= 1 && std::abs(px[1] - 120) <= 1 && std::abs(px[2] - 120) <= 1,
+              "and white-balanced: the blank field shows neutral");
+        check(station.grabLivePreview(cv::Size(1920, 1080)).image.size() == cv::Size(80, 60),
+              "a frame smaller than the window is not enlarged");
+
+        const int grabs = cam->grabs;
+        station.dropFrame();
+        check(cam->grabs == grabs + 1, "dropFrame() grabs, so the stream keeps moving while the window is busy");
     }
 
     std::cout << "\n== capture(): the sidecar records what the camera applied, not what was asked ==\n";

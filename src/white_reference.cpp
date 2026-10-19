@@ -1,6 +1,8 @@
 #include "white_reference.hpp"
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
@@ -57,6 +59,38 @@ cv::Mat applyWhiteBalanceGains(const cv::Mat& image, const WhiteBalance& gains) 
     const cv::Scalar perChannel = image.channels() == 4 ? cv::Scalar(gains.blue, gains.green, gains.red, 1.0)
                                                         : cv::Scalar(gains.blue, gains.green, gains.red);
     cv::multiply(image, perChannel, out);  // saturating for 8-bit
+    return out;
+}
+
+cv::Mat whiteBalancedPreview(const cv::Mat& image, const WhiteBalance& gains, cv::Size fitWithin) {
+    const int channels = image.channels();
+    if (image.depth() != CV_8U || (channels != 1 && channels != 3 && channels != 4)) {
+        throw std::invalid_argument("whiteBalancedPreview: expected 8-bit grey, BGR or BGRA");
+    }
+    cv::Mat shown = image;
+    if (!fitWithin.empty() && (image.cols > fitWithin.width || image.rows > fitWithin.height)) {
+        const double scale = std::min(static_cast<double>(fitWithin.width) / image.cols,
+                                      static_cast<double>(fitWithin.height) / image.rows);
+        // The size, not the factor: the whole image then maps onto the whole
+        // output, even when the factor doesn't divide both sides evenly.
+        const cv::Size shrunk(std::max(1, cvRound(image.cols * scale)), std::max(1, cvRound(image.rows * scale)));
+        cv::resize(image, shown, shrunk, 0.0, 0.0, cv::INTER_AREA);
+    }
+    if (channels == 1 || gains.isIdentity()) {
+        return shown;
+    }
+    // One table entry per level and channel, rounded and saturated like
+    // applyWhiteBalanceGains; alpha maps to itself.
+    cv::Mat table(1, 256, CV_8UC(channels));
+    uchar* entry = table.ptr<uchar>();
+    for (int level = 0; level < 256; ++level, entry += channels) {
+        entry[0] = cv::saturate_cast<uchar>(level * gains.blue);
+        entry[1] = cv::saturate_cast<uchar>(level * gains.green);
+        entry[2] = cv::saturate_cast<uchar>(level * gains.red);
+        if (channels == 4) entry[3] = static_cast<uchar>(level);
+    }
+    cv::Mat out;
+    cv::LUT(shown, table, out);
     return out;
 }
 

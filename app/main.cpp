@@ -10,6 +10,8 @@
 #include <QStandardPaths>
 #include <QTimer>
 
+#include <opencv2/core/utility.hpp>
+
 #include <exception>
 #include <filesystem>
 #include <utility>
@@ -58,6 +60,13 @@ msapp::AppSetup loadSetup() {
 } // namespace
 
 int main(int argc, char** argv) {
+    // OpenCV spreads each operation over every core. On these 4K frames its
+    // thread pool burned 2.5 to 15 times the CPU for a few ms of wall time,
+    // the 100 % bursts seen on the lab PCs; on one thread every interactive
+    // step (Levels, CALCUL, a preview frame) still takes under 30 ms
+    // (docs/reviews/2026-10-19-performance-and-quality-review.md, §1.2).
+    cv::setNumThreads(1);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Microscope Capture"));
     QApplication::setApplicationVersion(QString::fromUtf8(msapp::kBuildVersion));

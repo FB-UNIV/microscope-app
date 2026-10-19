@@ -15,7 +15,7 @@ namespace {
 
 // Largest frame sent to the window: enough for a full-HD screen, and a 4K
 // frame shrunk here costs far less than copying and painting it whole.
-const QSize kMaxPreviewSize(1920, 1080);
+const cv::Size kMaxPreviewSize(1920, 1080);
 
 QString sizeText(int width, int height) {
     return QStringLiteral("%1x%2").arg(width).arg(height);
@@ -90,11 +90,19 @@ void PreviewWorker::run() {
                     emit jobFailed(QString::fromStdString(e.what()));
                 }
             }
-            const cv::Mat frame = station.grabPreview();
-            ++grabbed;
-            if (!framePending_->exchange(true)) {
-                emit frameReady(toQImage(frame, kMaxPreviewSize), QSize(frame.cols, frame.rows));
+            // Only this thread sets the flag, so it can't be set between the
+            // check and the store below. While the window still holds the
+            // last frame, this one is grabbed — the stream keeps moving and
+            // the rate stays true — but not shrunk, balanced or copied.
+            if (framePending_->load()) {
+                station.dropFrame();
+            } else {
+                const CaptureStation::LivePreview preview = station.grabLivePreview(kMaxPreviewSize);
+                framePending_->store(true);
+                emit frameReady(toQImage(preview.image),
+                                QSize(preview.grabbedSize.width, preview.grabbedSize.height));
             }
+            ++grabbed;
             if (clock.elapsed() >= 1000) {
                 emit fpsMeasured(grabbed * 1000.0 / static_cast<double>(clock.restart()));
                 grabbed = 0;

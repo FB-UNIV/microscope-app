@@ -50,6 +50,15 @@ cv::Mat CaptureStation::grabPreview() {
     return applyWhiteBalanceGains(camera_->grab(), config_.whiteReference);
 }
 
+CaptureStation::LivePreview CaptureStation::grabLivePreview(cv::Size fitWithin) {
+    const cv::Mat frame = camera_->grab();
+    return {whiteBalancedPreview(frame, config_.whiteReference, fitWithin), frame.size()};
+}
+
+void CaptureStation::dropFrame() {
+    camera_->grab();
+}
+
 Vue CaptureStation::capture(const std::filesystem::path& imagePath, const std::optional<Calibration>& calibration) {
     const cv::Mat frame = grabPreview();
     CaptureInfo info;

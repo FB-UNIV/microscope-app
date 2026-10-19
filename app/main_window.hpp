@@ -4,10 +4,15 @@
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
 
+#include <QHash>
+#include <QIcon>
+#include <QImage>
 #include <QMainWindow>
 #include <QPointer>
 #include <QSize>
+#include <QString>
 #include <QStringList>
+#include <QThreadPool>
 
 #include <filesystem>
 #include <memory>
@@ -76,6 +81,8 @@ private:
     // The TP's instructions and the listed Vues.
     void refreshVues();
     void loadNextThumbnail();
+    // A thumbnail decoded on thumbnailPool_; null when the file can't be read.
+    void thumbnailLoaded(const QString& path, const QImage& thumbnail);
 
     void capture();
     void captured(int generation, const std::filesystem::path& vue, const QString& error);
@@ -131,6 +138,14 @@ private:
     bool cameraOpen_ = false;
     bool busy_ = false;     // a capture is running on the camera thread
     QSize frameSize_;       // the latest frame as grabbed, full size
+
+    // The Vue list's thumbnails by image path, kept across refreshes: a Vue
+    // never changes under its path (ADR 0004), and reading a 4K TIFF takes
+    // about 125 ms, so each is decoded once — one at a time, off the GUI
+    // thread, on thumbnailPool_.
+    QHash<QString, QIcon> thumbnails_;
+    QThreadPool thumbnailPool_;
+    bool thumbnailLoading_ = false;
 };
 
 } // namespace msapp
