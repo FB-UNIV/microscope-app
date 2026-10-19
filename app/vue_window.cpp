@@ -62,9 +62,12 @@ QString captureText(const Vue& vue) {
     lines << VueWindow::tr("Fichier : %1").arg(toQString(vue.imagePath().filename()));
     lines << VueWindow::tr("Image : %1x%2").arg(vue.original().cols).arg(vue.original().rows);
     if (const auto& calibration = vue.calibration()) {
-        lines << VueWindow::tr("Calibration : %1, %2 px/µm")
+        lines << VueWindow::tr("Calibration : %1, %2 px/µm%3")
                      .arg(QString::fromStdString(calibration->grossissement))
-                     .arg(calibration->pixelsPerMicron, 0, 'f', 4);
+                     .arg(calibration->pixelsPerMicron, 0, 'f', 4)
+                     .arg(calibration->isDerived()
+                              ? VueWindow::tr(" (déduite de %1)").arg(QString::fromStdString(calibration->derivedFrom))
+                              : QString());
     } else {
         lines << VueWindow::tr("Sans Calibration : ni Échelle ni mesure.");
     }

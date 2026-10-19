@@ -19,6 +19,11 @@ std::optional<std::string> invalidCalibration(const Calibration& c) {
     if (c.grossissement.empty()) {
         return std::string("a Calibration has no Grossissement");
     }
+    // Recomputed from the reference whenever it is needed (ADR 0020).
+    if (c.isDerived()) {
+        return "Calibration " + c.grossissement + " is derived from " + c.derivedFrom +
+               "; only Calibrations measured on the mire are kept";
+    }
     if (!std::isfinite(c.pixelsPerMicron) || c.pixelsPerMicron <= 0.0) {
         return "Calibration " + c.grossissement + " has pixels_per_micron " + std::to_string(c.pixelsPerMicron) +
                ", expected a positive number";
@@ -91,9 +96,22 @@ std::optional<Calibration> WorkstationConfig::calibration(const std::string& gro
     return *it;
 }
 
+std::optional<Calibration> WorkstationConfig::reference() const {
+    if (auto named = calibration(referenceGrossissement)) return named;
+    if (calibrations.empty()) return std::nullopt;
+    return calibrations.back();
+}
+
+std::optional<Calibration> WorkstationConfig::effectiveCalibration(const std::string& grossissement) const {
+    if (auto own = calibration(grossissement)) return own;
+    const auto measured = reference();
+    if (!measured) return std::nullopt;
+    return deriveCalibration(*measured, grossissement);
+}
+
 std::optional<Calibration> WorkstationConfig::calibrationForFrame(const std::string& grossissement, int width,
                                                                   int height) const {
-    auto found = calibration(grossissement);
+    auto found = effectiveCalibration(grossissement);
     if (found) {
         found->requireFitsFrame(width, height, "WorkstationConfig::calibrationForFrame");
     }
@@ -111,6 +129,7 @@ void WorkstationConfig::setCalibration(const Calibration& calibration) {
     } else {
         *it = calibration;
     }
+    referenceGrossissement = calibration.grossissement;
 }
 
 bool WorkstationConfig::removeCalibration(const std::string& grossissement) {
@@ -118,13 +137,18 @@ bool WorkstationConfig::removeCalibration(const std::string& grossissement) {
                            [&](const Calibration& c) { return c.grossissement == grossissement; });
     if (it == calibrations.end()) return false;
     calibrations.erase(it);
+    if (referenceGrossissement == grossissement) referenceGrossissement.clear();
     return true;
 }
 
 nlohmann::json WorkstationConfig::toJson() const {
     nlohmann::json calibrationsJson = nlohmann::json::array();
     for (const auto& c : calibrations) calibrationsJson.push_back(c.toJson());
-    return {{"camera", camera.toJson()}, {"calibrations", calibrationsJson}, {"vue_root", vueRoot.u8string()}};
+    return {{"camera", camera.toJson()},
+            {"calibrations", calibrationsJson},
+            {"reference_grossissement", referenceGrossissement},
+            {"mire_pitch_microns", mirePitchMicrons},
+            {"vue_root", vueRoot.u8string()}};
 }
 
 WorkstationConfig WorkstationConfig::fromJson(const nlohmann::json& j) {
@@ -146,6 +170,16 @@ WorkstationConfig WorkstationConfig::fromJson(const nlohmann::json& j) {
     }
     if (j.contains("vue_root")) {
         config.vueRoot = std::filesystem::u8path(j.at("vue_root").get<std::string>());
+    }
+    // A name matching no Calibration falls back to the last one listed
+    // (reference()) rather than refusing the whole file and its White
+    // reference with it.
+    config.referenceGrossissement = j.value("reference_grossissement", std::string());
+    // Like the reference: a bad pitch falls back to the lab's mire rather
+    // than refusing the file and the White reference with it.
+    if (j.contains("mire_pitch_microns") && j.at("mire_pitch_microns").is_number()) {
+        const double pitch = j.at("mire_pitch_microns").get<double>();
+        if (std::isfinite(pitch) && pitch > 0.0) config.mirePitchMicrons = pitch;
     }
     requireValidCalibrations(config.calibrations, "WorkstationConfig::fromJson");
     return config;

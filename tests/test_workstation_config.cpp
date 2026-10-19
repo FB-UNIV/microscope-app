@@ -141,7 +141,8 @@ int main() {
         auto atProfileMode = config.calibrationForFrame("x40", 3840, 2160);
         check(atProfileMode && sameCalibration(*atProfileMode, kX40At4k),
               "the Calibration is returned when the camera delivers the size it was measured at");
-        check(!config.calibrationForFrame("x100", 1024, 768), "an uncalibrated objective captures uncalibrated");
+        check(!WorkstationConfig{}.calibrationForFrame("x100", 1024, 768),
+              "with no objective measured, a capture is uncalibrated");
 
         // The A5 falls back to 1024x768 when a driver can't grant the 4K mode.
         const std::string why = throwsWith<std::runtime_error>([&] { config.calibrationForFrame("x40", 1024, 768); });
@@ -149,6 +150,60 @@ int main() {
         check(why.find("3840x2160") != std::string::npos && why.find("1024x768") != std::string::npos &&
                   why.find("x40") != std::string::npos,
               "the refusal names the Grossissement and both frame sizes");
+    }
+
+    std::cout << "\n== Derived Calibrations: one objective on the mire is enough (ADR 0020) ==\n";
+    {
+        check(magnification("x10") == 10.0 && magnification("X40") == 40.0 && magnification("x2.5") == 2.5 &&
+                  magnification("10x/0.25") == 10.0,
+              "a Grossissement's magnification is the first number in its name");
+        check(!magnification("Macro") && !magnification("x0") && !magnification(""),
+              "a name with no number, or 0, has none");
+
+        WorkstationConfig config;
+        config.setCalibration(Calibration{"x5", 0.31, 3840, 2160});
+        const auto x10 = config.effectiveCalibration("x10");
+        check(x10 && x10->isDerived() && x10->derivedFrom == "x5" && nearlyEqual(x10->pixelsPerMicron, 0.62) &&
+                  x10->frameWidth == 3840 && x10->frameHeight == 2160,
+              "with only x5 measured, x10 gets twice its px/µm, at the frame size x5 was measured at");
+        check(nearlyEqual(config.effectiveCalibration("x50")->pixelsPerMicron, 3.1) &&
+                  nearlyEqual(config.effectiveCalibration("x2.5")->pixelsPerMicron, 0.155),
+              "every objective scales by its magnification, up or down");
+        check(!config.calibration("x10") && config.calibrations.size() == 1,
+              "a derived Calibration is computed, never stored");
+        check(!config.effectiveCalibration("x5")->isDerived(), "the measured objective uses its own Calibration");
+        check(!config.effectiveCalibration("Macro"), "a Grossissement with no magnification stays uncalibrated");
+
+        const auto atMode = config.calibrationForFrame("x10", 3840, 2160);
+        check(atMode && atMode->isDerived() && nearlyEqual(atMode->pixelsPerMicron, 0.62),
+              "calibrationForFrame hands out the derived Calibration for capture");
+        const std::string why = throwsWith<std::runtime_error>([&] { config.calibrationForFrame("x10", 1024, 768); });
+        check(why.find("derived from x5") != std::string::npos && why.find("Recalibrate x5") != std::string::npos &&
+                  why.find("1024x768") != std::string::npos,
+              "a derived Calibration is checked against the frame size too, and says which objective to recalibrate");
+
+        config.setCalibration(Calibration{"x10", 0.6, 3840, 2160});
+        check(!config.effectiveCalibration("x10")->isDerived() &&
+                  nearlyEqual(config.effectiveCalibration("x10")->pixelsPerMicron, 0.6),
+              "an objective measured on the mire uses its own Calibration over a derived one");
+        check(config.reference()->grossissement == "x10" && config.effectiveCalibration("x50")->derivedFrom == "x10" &&
+                  nearlyEqual(config.effectiveCalibration("x50")->pixelsPerMicron, 3.0),
+              "the objective measured last is the reference the others are derived from");
+        config.setCalibration(Calibration{"x5", 0.31, 3840, 2160});
+        check(config.reference()->grossissement == "x5", "measuring x5 again makes it the reference again");
+        config.removeCalibration("x5");
+        check(config.reference()->grossissement == "x10", "forgetting the reference falls back to the last listed");
+
+        check(!throwsWith<std::invalid_argument>([&] { config.setCalibration(*config.effectiveCalibration("x40")); })
+                   .empty(),
+              "a derived Calibration can't be stored as if measured");
+
+        const Calibration derived = *config.effectiveCalibration("x40");
+        const Calibration back = Calibration::fromJson(derived.toJson());
+        check(back.derivedFrom == "x10" && nearlyEqual(back.pixelsPerMicron, derived.pixelsPerMicron),
+              "a derived Calibration keeps where it came from through JSON, so a Vue's sidecar can say so");
+        check(!kX40At4k.toJson().contains("derived_from") && !Calibration::fromJson(kX40At4k.toJson()).isDerived(),
+              "a measured one is written as before, with no \"derived_from\"");
     }
 
     std::cout << "\n== JSON layout ==\n";
@@ -165,6 +220,28 @@ int main() {
         const WorkstationConfig empty = WorkstationConfig::fromJson(nlohmann::json::object());
         check(empty.camera.backend == "opencv" && empty.camera.width == 3840 && empty.calibrations.empty(),
               "missing keys take their defaults");
+        check(j.at("reference_grossissement") == "x40", "\"reference_grossissement\" names the reference");
+        nlohmann::json older = j;
+        older.erase("reference_grossissement");
+        nlohmann::json edited = j;
+        edited["reference_grossissement"] = "x63";
+        check(WorkstationConfig::fromJson(older).reference()->grossissement == "x40" &&
+                  WorkstationConfig::fromJson(edited).reference()->grossissement == "x40",
+              "a file without it, or naming no Calibration, derives from the last one listed");
+
+        check(empty.mirePitchMicrons == 20.0 && j.at("mire_pitch_microns") == 20.0,
+              "the mire's period defaults to the lab's 20 µm");
+        WorkstationConfig micrometer;
+        micrometer.mirePitchMicrons = 10.0;
+        check(WorkstationConfig::fromJson(micrometer.toJson()).mirePitchMicrons == 10.0,
+              "another mire's period round-trips (#65)");
+        nlohmann::json badPitch = j;
+        badPitch["mire_pitch_microns"] = -5.0;
+        nlohmann::json textPitch = j;
+        textPitch["mire_pitch_microns"] = "ten";
+        check(WorkstationConfig::fromJson(badPitch).mirePitchMicrons == 20.0 &&
+                  WorkstationConfig::fromJson(textPitch).mirePitchMicrons == 20.0,
+              "a period that isn't a positive number falls back to 20 µm instead of losing the file");
 
         nlohmann::json twice = j;
         twice["calibrations"].push_back(Calibration{"x40", 2.6, 1024, 768}.toJson());
@@ -206,6 +283,8 @@ int main() {
         check(back.calibrations.size() == 2 && sameCalibration(back.calibrations[0], kX10At4k) &&
                   sameCalibration(back.calibrations[1], kX40At4k),
               "Calibrations round-trip through disk, frame size included");
+        check(back.referenceGrossissement == "x40" && back.effectiveCalibration("x100")->derivedFrom == "x40",
+              "so does the reference the other objectives are derived from");
         check(!throwsWith<std::runtime_error>([&] { back.calibrationForFrame("x40", 1024, 768); }).empty(),
               "a reloaded Calibration is still checked against the frame size");
 

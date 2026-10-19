@@ -506,22 +506,31 @@ void MainWindow::refreshBanner() {
 void MainWindow::refreshCaptureState() {
     const QString name = grossissement();
     captureWarning_.clear();
-    const auto stored = setup_.config.calibration(name.toStdString());
+    // Its own mire Calibration, or one derived from the objective measured
+    // last (ADR 0020).
+    const auto stored = setup_.config.effectiveCalibration(name.toStdString());
     if (!stored) {
         calibrationLabel_->setText(tr(" non calibré "));
         captureWarning_ = tr("%1 n'est pas calibré sur ce poste : les Vues seront prises sans Échelle, et sans "
-                             "mesure possible. Menu Poste › Calibrer un grossissement.")
+                             "mesure possible. Menu Poste › Calibrer un grossissement : un seul objectif calibré "
+                             "sur la mire suffit, les autres en sont déduits.")
                               .arg(name);
     } else {
-        calibrationLabel_->setText(tr(" %1 px/µm, image %2x%3 ")
+        const QString origin = stored->isDerived()
+                                   ? tr(" (déduit de %1)").arg(QString::fromStdString(stored->derivedFrom))
+                                   : QString();
+        calibrationLabel_->setText(tr(" %1 px/µm%2, image %3x%4 ")
                                        .arg(stored->pixelsPerMicron, 0, 'f', 4)
+                                       .arg(origin)
                                        .arg(stored->frameWidth)
                                        .arg(stored->frameHeight));
         if (frameSize_.isValid() && !stored->fitsFrame(frameSize_.width(), frameSize_.height())) {
             // ADR 0015: never applied to another frame size, never rescaled.
+            const QString measured =
+                QString::fromStdString(stored->isDerived() ? stored->derivedFrom : stored->grossissement);
             captureWarning_ = tr("%1 a été calibré en %2x%3 mais la caméra fournit %4x%5 : les Vues seront prises "
                                  "sans Calibration. Reconnectez la caméra pour retrouver ce mode, ou recalibrez %1.")
-                                  .arg(name)
+                                  .arg(measured)
                                   .arg(stored->frameWidth)
                                   .arg(stored->frameHeight)
                                   .arg(frameSize_.width())
@@ -820,14 +829,21 @@ void MainWindow::calibrateGrossissement() {
         QMessageBox::information(this, tr("Calibration"), tr("La caméra n'est pas disponible."));
         return;
     }
-    auto* dialog = new MireDialog(grossissementChoices(setup_.config), grossissement(), this);
+    auto* dialog =
+        new MireDialog(grossissementChoices(setup_.config), grossissement(), setup_.config.mirePitchMicrons, this);
     const QPointer<MireDialog> guard(dialog);
     connect(dialog, &MireDialog::stillRequested, this, [this, guard] { requestStill(guard); });
     requestStill(guard);
     std::optional<Calibration> result;
-    if (dialog->exec() == QDialog::Accepted) result = dialog->result();
+    double mirePitch = setup_.config.mirePitchMicrons;
+    if (dialog->exec() == QDialog::Accepted) {
+        result = dialog->result();
+        mirePitch = dialog->pitchMicrons();
+    }
     delete dialog;
     if (!result) return;
+    // The workstation's mire, for next time (#65); saved with the Calibration.
+    setup_.config.mirePitchMicrons = mirePitch;
 
     if (const auto existing = setup_.config.calibration(result->grossissement)) {
         const auto answer = QMessageBox::question(
@@ -841,7 +857,9 @@ void MainWindow::calibrateGrossissement() {
     }
     setup_.config.setCalibration(*result);
     if (saveConfig()) {
-        statusBar()->showMessage(tr("Calibration de %1 enregistrée.").arg(QString::fromStdString(result->grossissement)),
+        statusBar()->showMessage(tr("Calibration de %1 enregistrée ; les grossissements non calibrés sur la mire en "
+                                    "sont déduits.")
+                                     .arg(QString::fromStdString(result->grossissement)),
                                  10000);
     }
     fillGrossissements();
@@ -856,18 +874,21 @@ void MainWindow::requestStill(QPointer<MireDialog> dialog) {
     }
     jobs_->post([this, dialog](CaptureStation& station) {
         QImage still;
+        std::optional<cv::Vec2d> lineNormal;
         QString error;
         try {
-            still = toQImage(station.grabPreview());  // full size: the clicks are in its pixels
+            const cv::Mat frame = station.grabPreview();
+            still = toQImage(frame);  // full size: the clicks are in its pixels
+            lineNormal = mireLineNormal(frame);  // here, off the UI thread: a 4K frame takes a moment
         } catch (const std::exception& e) {
             error = QString::fromStdString(e.what());
         }
         QMetaObject::invokeMethod(
             this,
-            [dialog, still, error] {
+            [dialog, still, lineNormal, error] {
                 if (!dialog) return;
                 if (error.isEmpty()) {
-                    dialog->setStill(still);
+                    dialog->setStill(still, lineNormal);
                 } else {
                     dialog->stillFailed(error);
                 }

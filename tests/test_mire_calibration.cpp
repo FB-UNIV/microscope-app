@@ -9,6 +9,8 @@
 #include "workstation_config.hpp"
 #include "test_support.hpp"
 
+#include <opencv2/imgproc.hpp>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -43,6 +45,50 @@ int main() {
               "a Calibration needs the frame size it is measured at (ADR 0015)");
         check(!throwsWith<std::invalid_argument>([] { MireCalibration("x40", 3840, 2160, 0.0); }).empty(),
               "the mire pitch must be positive");
+    }
+
+    std::cout << "\n== Across the lines: clicks need not be level (#65) ==\n";
+    {
+        // Dark vertical lines every 31 px on a light background, like
+        // tools/make_mire.py; and the same mire turned by 10 degrees.
+        cv::Mat vertical(400, 600, CV_8UC1, cv::Scalar(215));
+        for (int x = 15; x < vertical.cols; x += 31) {
+            cv::line(vertical, {x, 0}, {x, vertical.rows - 1}, cv::Scalar(45), 3);
+        }
+        const auto upright = mireLineNormal(vertical);
+        check(upright && nearlyEqual((*upright)[0], 1.0, 1e-3) && nearlyEqual((*upright)[1], 0.0, 1e-3),
+              "vertical lines: the direction across them is horizontal");
+
+        cv::Mat tilted;
+        const cv::Mat turn = cv::getRotationMatrix2D(cv::Point2f(300, 200), 10.0, 1.0);
+        cv::warpAffine(vertical, tilted, turn, vertical.size(), cv::INTER_LINEAR, cv::BORDER_REFLECT);
+        const auto askew = mireLineNormal(tilted);
+        const double angle = askew ? std::atan2((*askew)[1], (*askew)[0]) * 180.0 / CV_PI : 999.0;
+        check(askew && std::abs(std::abs(angle) - 10.0) < 1.0, "a mire set 10 degrees askew is found 10 degrees askew");
+
+        cv::Mat noise(400, 600, CV_8UC1);
+        cv::randu(noise, 0, 255);
+        check(!mireLineNormal(cv::Mat(400, 600, CV_8UC1, cv::Scalar(128))) && !mireLineNormal(noise),
+              "a blank or noisy image has no line direction: clicks are measured as they are");
+        cv::Mat colour;
+        cv::cvtColor(vertical, colour, cv::COLOR_GRAY2BGR);
+        check(mireLineNormal(colour).has_value(), "a colour still works too");
+
+        MireCalibration mire("x5", 3840, 2160);
+        mire.setLineNormal(upright);
+        check(nearlyEqual(mire.addReading({100, 100}, {2580, 900}, 20), 2480.0 / 400.0),
+              "with vertical lines, clicks 800 px apart in height still read 2480 px across 20 periods");
+        check(nearlyEqual(mire.measuredPixels({100, 100}, {100, 900}), 0.0) &&
+                  !throwsWith<std::invalid_argument>([&] { mire.addReading({100, 100}, {100, 900}, 5); }).empty(),
+              "two clicks on the same line, one above the other, measure nothing and are refused");
+        mire.setLineNormal(cv::Vec2d(3.0, 4.0));
+        check(nearlyEqual(mire.measuredPixels({0, 0}, {300, 400}), 500.0), "a direction need not be unit length");
+        check(!throwsWith<std::invalid_argument>([&] { mire.setLineNormal(cv::Vec2d(0, 0)); }).empty(),
+              "a zero direction is refused");
+        mire.setLineNormal(std::nullopt);
+        check(nearlyEqual(mire.measuredPixels({0, 0}, {300, 400}), 500.0) &&
+                  nearlyEqual(mire.measuredPixels({0, 0}, {300, 0}), 300.0),
+              "without a direction the clicks' straight distance counts, as before");
     }
 
     std::cout << "\n== Repeat until two readings agree within 0.25 % ==\n";
