@@ -3,8 +3,10 @@
 //   under a name nobody else's capture can take, even when two of us click
 //   in the same second; before any TP exists on this workstation, my photos
 //   still save, into Unsorted (ADR 0008), and once the TP exists I file
-//   each one into its Échantillon with its Treatments. As a teacher, I can
-//   list the Vues of one Échantillon in the order they were taken.
+//   each one into its Échantillon with its Treatments. A blurred photo I
+//   delete goes to a Corbeille it can still be recovered from. As a
+//   teacher, I can list the Vues of one Échantillon in the order they were
+//   taken.
 
 #include "levels_treatment.hpp"
 #include "vue.hpp"
@@ -97,6 +99,9 @@ int main() {
               "no Department, TP or Échantillon: the Unsorted bucket (ADR 0008)");
         check(store.folder({"unsorted", "TP", "E"}) == dir / "vues" / "unsorted_" / "TP" / "E",
               "a Department named Unsorted can't share the bucket's folder");
+        check(store.folder({"Corbeille", "TP", "E"}) == dir / "vues" / "Corbeille_" / "TP" / "E" &&
+                  store.corbeille() == dir / "vues" / "Corbeille",
+              "nor can one named Corbeille share the deleted Vues' folder");
         check(!throwsWith<std::invalid_argument>([&] { store.folder({"GMP", "", "A5"}); }).empty(),
               "a partial location is refused, not filed half-way");
     }
@@ -327,6 +332,65 @@ int main() {
         check(store.fileVue(image, tp5) == target && Vue::load(target).treatmentCount() == 1,
               "filed into a folder it can be moved to, it works");
 #endif
+    }
+
+    std::cout << "\n== deleteVue: to the Corbeille, never erased ==\n";
+    {
+        const VueLocation ech{"GMP", "TP 8", "Ac1: XC10"};
+        Vue vue = Vue::capture(frame, store.newVuePath(ech), CaptureInfo{}, Calibration{"x10", 2.5, 64, 48});
+        vue.addTreatment(std::make_unique<LevelsTreatment>(20, 230));
+        const Vue kept = Vue::capture(frame, store.newVuePath(ech), CaptureInfo{});  // with a sidecar
+        const fs::path image = vue.imagePath();
+        touch(withSuffix(vue.sidecarPath(), ".unreadable"));
+        store.setPrincipale(ech, image);
+
+        const fs::path deleted = store.deleteVue(image);
+        check(deleted == store.corbeille() / "GMP" / "TP 8" / "Ac1_ XC10" / image.filename(),
+              "a deleted Vue goes under the same Department / TP / Échantillon folders in the Corbeille");
+        check(!fs::exists(image) && !fs::exists(withSuffix(image, ".json")) &&
+                  !fs::exists(withSuffix(image, ".json.unreadable")),
+              "nothing of it is left in its Échantillon");
+        check(fs::exists(withSuffix(deleted, ".json")) && fs::exists(withSuffix(deleted, ".json.unreadable")),
+              "its sidecar and set-aside files moved with it");
+        check(store.listVues(ech) == std::vector<fs::path>{kept.imagePath()}, "it no longer lists; the others do");
+        check(!store.principale(ech) && !fs::exists(store.folder(ech) / "vue-principale.json"),
+              "a deleted Vue principale is unflagged");
+        const Vue recovered = Vue::load(deleted);
+        check(!recovered.sidecarError() && recovered.treatmentCount() == 1 && recovered.calibration(),
+              "in the Corbeille it still loads with its Treatments and Calibration: nothing is erased");
+
+        store.setPrincipale(ech, kept.imagePath());
+        const Vue other = Vue::capture(frame, store.newVuePath(ech));
+        store.deleteVue(other.imagePath());
+        check(store.principale(ech) == kept.imagePath(), "deleting another Vue leaves the flag alone");
+
+        // Put back by hand, then deleted again: the first copy stays.
+        fs::rename(deleted, image);
+        fs::rename(withSuffix(deleted, ".json"), withSuffix(image, ".json"));
+        check(lists(store.listVues(ech), image), "moving its files back by hand restores it");
+        std::ofstream(withSuffix(deleted, ".json.unreadable"), std::ios::binary | std::ios::app) << "first";
+        const fs::path again = store.deleteVue(image);
+        check(again == deleted.parent_path() / (image.stem().string() + "-2" + image.extension().string()) &&
+                  fs::exists(withSuffix(again, ".json")) && readAll(withSuffix(deleted, ".json.unreadable")) == "xfirst",
+              "deleted again, it gets a '-2' name; nothing already in the Corbeille is overwritten");
+
+        const Vue unsorted = Vue::capture(frame, store.newVuePath(VueLocation::unsorted()));
+        const fs::path unsortedDeleted = store.deleteVue(unsorted.imagePath());
+        check(unsortedDeleted == store.corbeille() / "Unsorted" / unsorted.imagePath().filename() &&
+                  !lists(store.listVues(VueLocation::unsorted()), unsorted.imagePath()),
+              "an Unsorted Vue goes to Corbeille/Unsorted");
+
+        const auto refused = [&](const fs::path& path) {
+            return !throwsWith<std::invalid_argument>([&] { store.deleteVue(path); }).empty();
+        };
+        check(refused(again) && fs::exists(again), "a Vue already in the Corbeille is refused, and stays");
+        check(refused(store.folder(ech) / "missing.tiff") && refused(kept.sidecarPath()) &&
+                  fs::exists(kept.sidecarPath()),
+              "a missing file, or a sidecar, is refused");
+        const Vue outside = Vue::capture(frame, dir / "elsewhere" / "photo2.tiff");
+        check(refused(outside.imagePath()) && fs::exists(outside.imagePath()), "a photo outside the store is refused");
+        check(!throwsWith<std::invalid_argument>([&] { store.fileVue(again, ech); }).empty(),
+              "and a Vue in the Corbeille can't be filed back into an Échantillon either");
     }
 
     std::cout << "\n== Where Vues go by default ==\n";

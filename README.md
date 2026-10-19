@@ -111,6 +111,13 @@ one.
   (Unsorted, ADR 0008) are listed with *Vues non classées (N)* above the
   list, until every one is filed. A Vue open in its own window must be
   closed first.
+- **Deleting Vues.** *Supprimer la Vue…* (button, right-click, or Suppr in
+  the list; also in the Vue's own window) asks first, then moves the Vue
+  with its Treatments to `Corbeille/` in the Vue folder, under the same
+  *Département / TP / Échantillon* folders (`VueStore::deleteVue`). Nothing
+  is erased: move its files back to recover it. A deleted Vue principale
+  is unflagged, and a window open on it closes. Who may delete is not
+  restricted yet.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
   an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
   Treatments and Échelle, its name and Grossissement, three per page, one
