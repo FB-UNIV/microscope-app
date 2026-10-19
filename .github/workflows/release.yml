@@ -1,0 +1,161 @@
+name: Release
+
+# Puts the Windows bundles CI built on the Releases page, so a tester
+# downloads a zip instead of digging artifacts out of a CI run (README,
+# "Getting a test build"). Nothing is rebuilt: these are the very bundles the
+# CI run built and smoke-tested.
+#
+# - A green CI run on master replaces the zips of the "latest" pre-release,
+#   and moves its tag to that commit.
+# - A green CI run on a version tag (git push origin v0.1.0) publishes
+#   release v0.1.0.
+#
+# The zips are named after the build the exe reports (title bar, --version):
+# microscope_app-windows-v0.1.0-3-gabc1234.zip.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write  # move the latest tag, publish releases
+  actions: read    # download the CI run's artifacts
+
+jobs:
+  publish:
+    # Pushes (and CI started by hand) only: a pull request's build is never
+    # published. Which branch or tag is sorted out in "What to publish".
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # One publication at a time per branch or tag, in the order CI finished.
+    concurrency:
+      group: release-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      REF_NAME: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      # Full history and tags, for git describe and the list of changes. No
+      # code from the checkout is run.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # The version matches the one CMake stamped in the exe: CI runs the
+      # same git describe on the same commit. The changes are the squash-merge
+      # subjects since the previous version tag, each with its PR number
+      # (GitHub's generated notes would start from the newest release, which
+      # can be the "latest" pre-release itself).
+      - name: What to publish
+        id: plan
+        run: |
+          if [ "$REF_NAME" = master ]; then
+            # A run for an older commit (re-run by hand, or overtaken by a
+            # newer merge) must not replace a newer build.
+            if [ "$(git rev-parse origin/master)" != "$SHA" ]; then
+              echo "master has moved past $SHA: the run for the newer commit publishes."
+              exit 0
+            fi
+            tag=latest
+            version=$(git describe --tags --match 'v[0-9]*' --always "$SHA")
+            since=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "$SHA" 2>/dev/null || true)
+            prerelease=true
+          elif [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] &&
+               [ "$(git rev-parse -q --verify "refs/tags/$REF_NAME^{commit}")" = "$SHA" ]; then
+            tag=$REF_NAME
+            version=$REF_NAME
+            since=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "$SHA^" 2>/dev/null || true)
+            # v1.0.0-rc.1 and the like
+            if [[ "$REF_NAME" == *-* ]]; then prerelease=true; else prerelease=false; fi
+          else
+            echo "$REF_NAME is neither master nor a version tag at $SHA: nothing to publish."
+            exit 0
+          fi
+
+          if [ -n "$since" ]; then
+            heading="Changes since $since"
+            changes=$(git log --first-parent --format='- %s' "$since..$SHA")
+          else
+            heading="Changes (no versioned release before this one)"
+            changes=$(git log --first-parent --format='- %s' "$SHA")
+          fi
+          {
+            if [ "$tag" = latest ]; then
+              echo "Newest green build of \`master\`, replaced after every merge. Built from $SHA by [this CI run]($RUN_URL)."
+              echo "For a build that stays put, take a \`vX.Y.Z\` release."
+            else
+              echo "Built from $SHA by [this CI run]($RUN_URL)."
+            fi
+            echo
+            echo "- \`microscope_app-windows-$version.zip\`: the app."
+            echo "- \`camera_probe-windows-$version.zip\`: the camera check for a lab PC ([guide](https://github.com/$GH_REPO/blob/master/docs/hardware/camera-probe.md))."
+            echo
+            echo "Unblock the zip (right-click, Properties, Unblock), extract it, and run the exe from the extracted folder: [Getting a test build](https://github.com/$GH_REPO#getting-a-test-build)."
+            echo
+            echo "## $heading"
+            echo
+            echo "${changes:-Nothing yet.}"
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Zip the CI bundles
+        if: steps.plan.outputs.tag != ''
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/zips"
+          for bundle in microscope_app-windows camera_probe-windows; do
+            gh run download "$RUN_ID" --name "$bundle" --dir "$RUNNER_TEMP/bundles/$bundle"
+            (cd "$RUNNER_TEMP/bundles/$bundle" && zip -q -r -9 "$RUNNER_TEMP/zips/$bundle-$VERSION.zip" .)
+          done
+          ls -l "$RUNNER_TEMP/zips"
+
+      - name: Publish
+        if: steps.plan.outputs.tag != ''
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+        run: |
+          zips=("$RUNNER_TEMP"/zips/*.zip)
+          notes="$RUNNER_TEMP/notes.md"
+          if [ "$TAG" = latest ]; then
+            title="Latest master build ($VERSION)"
+            # A release sits on its tag: move the tag first. Pushed with the
+            # workflow token, so it starts no workflow.
+            git tag -f latest "$SHA"
+            git push -f origin refs/tags/latest
+            if gh release view latest > /dev/null 2>&1; then
+              gh release edit latest --prerelease --title "$title" --notes-file "$notes"
+              gh release upload latest "${zips[@]}" --clobber
+              # Then drop the previous build's zips, so a download is never
+              # missing in between.
+              gh release view latest --json assets --jq '.assets[].name' | while read -r asset; do
+                if [ ! -e "$RUNNER_TEMP/zips/$asset" ]; then gh release delete-asset latest "$asset" --yes; fi
+              done
+            else
+              gh release create latest "${zips[@]}" --verify-tag --prerelease --latest=false \
+                --title "$title" --notes-file "$notes"
+            fi
+          elif gh release view "$TAG" > /dev/null 2>&1; then
+            # Published by hand first: keep its notes, add the zips.
+            gh release upload "$TAG" "${zips[@]}" --clobber
+          else
+            flags=()
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            gh release create "$TAG" "${zips[@]}" --verify-tag --title "$TAG" --notes-file "$notes" "${flags[@]}"
+          fi
+          gh release view "$TAG" --json url,assets --jq '.url, .assets[].name'

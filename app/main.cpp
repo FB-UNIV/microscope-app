@@ -1,3 +1,4 @@
+#include "build_version.hpp"
 #include "catalog.hpp"
 #include "main_window.hpp"
 #include "qt_image.hpp"
@@ -59,9 +60,13 @@ msapp::AppSetup loadSetup() {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("Microscope Capture"));
+    QApplication::setApplicationVersion(QString::fromUtf8(msapp::kBuildVersion));
 
     QCommandLineParser parser;
     parser.addHelpOption();
+    // Like --help, on Windows it shows a message box unless the output is
+    // redirected (microscope_app.exe --version | Out-String).
+    parser.addVersionOption();
     const QCommandLineOption smokeTest(QStringLiteral("smoke-test"),
                                        QStringLiteral("Show the main window, then quit (CI launch check)."));
     // Overrides for this run only, e.g. a laptop whose built-in webcam takes

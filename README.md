@@ -94,6 +94,37 @@ ADRs 0004–0008 (the k3s-hosted sync/API/backend) — that's Phase 2,
 deliberately deferred. No Motic SDK backend is planned: the A5 doesn't need
 one.
 
+## Getting a test build
+
+Every green build of `master` is published as the **latest** pre-release:
+[Releases › latest](https://github.com/FB-UNIV/microscope-app/releases/tag/latest).
+Its zips are replaced after each merge; a `vX.Y.Z` release is a build that
+stays put. No GitHub account is needed to download while the repo is public.
+
+1. Download `microscope_app-windows-<build>.zip` (`camera_probe-windows-<build>.zip`
+   is the camera check, see [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md)),
+   or with the GitHub CLI:
+   ```
+   gh release download latest --repo FB-UNIV/microscope-app --pattern 'microscope_app-windows-*.zip'
+   ```
+2. Right-click the zip › *Properties* › tick *Unblock* › OK (else SmartScreen
+   blocks the unsigned exe), then *Extract All*.
+3. Run `microscope_app.exe` from the extracted folder, with the DLLs and
+   folders beside it: nothing to install, no admin rights. No microscope at
+   hand: `.\microscope_app.exe --replay photo.png` (see *Demo PC* below).
+
+The title bar names the build, as the zip does: `Microscope Capture —
+v0.1.0-3-gabc1234` is 3 commits after v0.1.0, at commit `abc1234` (just
+`abc1234` before the first version). `microscope_app.exe --version` shows it
+too, in a message box (`.\microscope_app.exe --version | Out-String` prints
+it). Quote it when reporting a problem.
+
+**Publishing a version.** Tag a `master` commit and push the tag:
+`git tag -a v0.1.0 -m v0.1.0 <commit>` then `git push origin v0.1.0`. CI
+builds the tag, so the exe says `v0.1.0`, and `.github/workflows/release.yml`
+publishes release v0.1.0 with both zips and the PRs merged since the
+previous version.
+
 ## Using the app
 
 `microscope_app` (French UI) on a lab PC, MotiConnect closed:
@@ -171,18 +202,8 @@ one.
 
 ## Trying it without a microscope
 
-1. **Get the app.** CI builds the Windows bundle on every push. Take a
-   green run on `master`, then download its `microscope_app-windows`
-   artifact (you must be logged in to GitHub):
-
-   ```
-   gh run list --repo FB-UNIV/microscope-app --branch master --workflow ci.yml --status success --limit 1
-   gh run download <run> --repo FB-UNIV/microscope-app --name microscope_app-windows
-   ```
-
-   `<run>` is the number the first command prints. Unblock and extract the
-   zip as for `camera_probe` ([camera-probe.md](docs/hardware/camera-probe.md),
-   step 2.1).
+1. **Get the app.** Download `microscope_app-windows-<build>.zip` from the
+   `latest` release, unblock and extract it (see *Getting a test build*).
 2. **Replay lab frames as the camera.** `microscope_app.exe --replay
    frame.png` (repeat `--replay` for several images) previews the image
    instead of a camera; *Capturer* files it as a Vue. The 4K frames of
@@ -225,7 +246,10 @@ it shows the `MainWindow` and quits, so it needs no display. There too,
 pan, dragging and right-clicking a measurement point, drawing a zone. CI publishes
 a ready-to-run Windows bundle of the app (`microscope_app-windows`: exe,
 Qt, OpenCV and MSVC runtime DLLs), built with the Qt version pinned in
-`.github/workflows/ci.yml`.
+`.github/workflows/ci.yml`; on `master` it goes to the Releases page (see
+*Getting a test build*). CMake stamps `git describe` into the app and
+`camera_probe` as the build version when it configures (`-DMSAPP_VERSION=...`
+overrides it; a tree without git says `unknown`).
 
 `test_pipeline` synthesizes a low-contrast test image (standing in for a
 real capture, so the test needs no camera), runs it through Levels +

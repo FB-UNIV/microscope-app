@@ -45,6 +45,14 @@ set_target_properties(microscope_app PROPERTIES WIN32_EXECUTABLE ON)
 add_test(NAME microscope_app_launch COMMAND microscope_app --smoke-test)
 set_tests_properties(microscope_app_launch PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
 
+# --version prints the build stamped by CMake. On Windows Qt would show it in
+# a message box; the variable keeps it on stdout.
+add_test(NAME microscope_app_version COMMAND microscope_app --version)
+set_tests_properties(microscope_app_version PROPERTIES
+                     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES=1"
+                     TIMEOUT 60
+                     PASS_REGULAR_EXPRESSION "^Microscope Capture ${msapp_version}")
+
 # Widget tests (QtTest): the mouse gestures of the image view — click, pan,
 # handle drag and right-click, rectangle mode. Offscreen, like the launch check.
 qt_add_executable(test_image_view
