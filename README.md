@@ -95,6 +95,9 @@ one.
   a message and *Reconnecter la caméra* (F5).
 - **Vues.** The right panel lists the Échantillon's Vues, newest first;
   *★ Choisir comme Vue principale* flags the one for the Fiche.
+  *Masquer les Vues* (F9) hides the panel for a bigger live view; the
+  toolbars still show the Échantillon and Grossissement, capture works the
+  same, and the choice is remembered in `ui.ini` beside `workstation.json`.
   Double-click opens a Vue: Levels with a live preview, the Échelle,
   removing a Treatment (all saved in the sidecar at once), *Mesurer une
   longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
