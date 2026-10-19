@@ -35,20 +35,20 @@ set exposure, gain, white balance / resolution list), with an OpenCV backend for
 
 | Legacy feature | Evidence | New app status | Action |
 |---|---|---|---|
-| Live capture | MIL, 3 HW paths | `ICamera` + OpenCV backend | Moticam A5 is UVC → OpenCV backend (ADR 0013); confirm modes with `camera_probe` |
-| White balance / exposure | config rows (1.745, 1.0, 2.576), "Balance des Blancs" | Camera profile + White reference in `CaptureStation` (ADR 0014) | done; calibrate per microscope |
+| Live capture | MIL, 3 HW paths | `ICamera` + OpenCV backend | Moticam A5 is UVC → OpenCV backend (ADR 0013); done: 3840×2160 MJPG over DirectShow (`docs/hardware/camera-probe.md`) |
+| White balance / exposure | config rows (1.745, 1.0, 2.576), "Balance des Blancs" | Camera profile + White reference in `CaptureStation` (ADR 0014) | done; White reference measured per microscope; A5 exposure fixed at 7.8 ms (probe round 2) |
 | Levels | "expansion a·x + b" | `LevelsTreatment` (black/white point) | equivalent: `a = 255/(w−b0)`, `b = −a·b0` |
-| Échelle overlay | per-TP flag `0x10` | `EchelleTreatment` | done; add per-TP "show échelle" setting? |
+| Échelle overlay | per-TP flag `0x10` | `EchelleTreatment` | done; on every calibrated Vue, no per-TP flag (ADR 0017) |
 | Length measurement | cursor tool | `Measurement` | done |
-| Calibration | 1 constant 288.65 px/mm × G | per-objective `pixelsPerMicron` | new model better; build reticle wizard (20 µm mire, 0.25 % check) |
-| **Phase % ("Pourcentage des constituants")** | `gere_calcul`, `denombre`, auto-threshold | `analyzePhases` (ADR 0012) | done, bit-exact |
+| Calibration | 1 constant 288.65 px/mm × G | one objective measured on the mire, the others derived × G (ADR 0020); tied to the frame size (ADR 0015) | done; mire wizard (period setting, 20 µm by default, 0.25 % check). Same model as the legacy app; an objective measured on the mire keeps its own value |
+| **Phase % ("Pourcentage des constituants")** | `gere_calcul`, `denombre`, auto-threshold | `analyzePhases` (ADR 0012) | done, bit-exact; photos wider than 1042 px analysed at that width, a missing Seuil reported (ADR 0021); optional zone |
 | **Vickers HV0.5** | `0x44aad0`, `HV=0.927045/d²·10⁶` | `vickersHardness` (ADR 0012) | done, bit-exact |
-| Threshold overlay image | `creeImageSeuil` | — | becomes a `Treatment` if phase % kept |
-| Dept/TP/Échantillon | `DATA_METAL.txt`, `<PROFILE>.txt` | concepts in CONTEXT.md | importer for v2/v4 text formats |
-| Profiles by code | 11 codes incl. hidden `cricri` | ADR 0006 (install token, no per-user) | Department picker; drop codes |
+| Threshold overlay image | `creeImageSeuil` | `PhaseOverlayTreatment` | done, a Treatment (the phase map) |
+| Dept/TP/Échantillon | `DATA_METAL.txt`, `<PROFILE>.txt` | `Catalog` (`catalog.json`, written by hand) | not imported, entered fresh (ADR 0018) |
+| Profiles by code | 11 codes incl. hidden `cricri` | ADR 0006 (install token, no per-user) | done: Department picker, codes dropped |
 | Fixed-name views + shared state | `TP%dEch%dVue%d.tif`, `etat_vue_tp` on `Z:\MetalData` | ADR 0004 immutable unique files | **confirms ADR 0004 root cause** |
-| Print queue, 3 views/page, print codes | `.met`, codes −1…−5-N | ADR 0010 Fiche, cap dropped | print codes become obsolete |
-| Legacy archive | TIFF + tag `0xF000` (G, px/mm) | — | importer → Vue + sidecar, `pixelsPerMicron = tag0x207/1000` |
+| Print queue, 3 views/page, print codes | `.met`, codes −1…−5-N | Fiche PDF per TP, three Vues per page (ADR 0010, 0016, 0019), cap dropped | done; print codes obsolete |
+| Legacy archive | TIFF + tag `0xF000` (G, px/mm) | — | not imported (ADR 0018) |
 
 ## 3. Exact algorithms to port if phase % / HV are kept
 
