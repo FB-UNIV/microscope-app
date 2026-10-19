@@ -1,6 +1,6 @@
 #include "file_replay_camera.hpp"
+#include "image_io.hpp"
 
-#include <opencv2/imgcodecs.hpp>
 #include <stdexcept>
 
 namespace msapp {
@@ -13,7 +13,7 @@ void FileReplayCamera::open() {
     }
     for (const auto& frame : frames_) {
         if (!std::filesystem::exists(frame)) {
-            throw std::runtime_error("FileReplayCamera: missing frame " + frame.string());
+            throw std::runtime_error("FileReplayCamera: missing frame " + frame.u8string());
         }
     }
     decoded_.assign(frames_.size(), cv::Mat());
@@ -33,9 +33,9 @@ cv::Mat FileReplayCamera::grab() {
     next_ = (next_ + 1) % frames_.size();
     cv::Mat& image = decoded_[index];
     if (image.empty()) {
-        image = cv::imread(frames_[index].string(), cv::IMREAD_COLOR);
+        image = readImage(frames_[index], cv::IMREAD_COLOR);
         if (image.empty()) {
-            throw std::runtime_error("FileReplayCamera::grab: could not decode " + frames_[index].string());
+            throw std::runtime_error("FileReplayCamera::grab: could not decode " + frames_[index].u8string());
         }
     }
     return image.clone();

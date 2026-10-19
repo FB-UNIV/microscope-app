@@ -9,7 +9,7 @@ namespace {
 
 Calibration calibrationOf(const Vue& vue) {
     if (!vue.calibration()) {
-        throw std::invalid_argument("Measurement: " + vue.imagePath().string() +
+        throw std::invalid_argument("Measurement: " + vue.imagePath().u8string() +
                                     " has no Calibration — it was captured without a calibrated Grossissement");
     }
     return *vue.calibration();

@@ -7,7 +7,9 @@
 #include "mire_dialog.hpp"
 #include "preview_widget.hpp"
 #include "preview_worker.hpp"
+#include "image_io.hpp"
 #include "qt_image.hpp"
+#include "slot_guard.hpp"
 #include "vue_window.hpp"
 #include "wait_cursor.hpp"
 
@@ -628,7 +630,8 @@ void MainWindow::loadNextThumbnail() {
         thumbnailPool_.start([this, path] {
             QImage thumbnail;
             try {
-                const cv::Mat image = cv::imread(toPath(path).string(), cv::IMREAD_REDUCED_COLOR_4);
+                // Through the wide path: "Fonte γ" has no ANSI name (review H1).
+                const cv::Mat image = readImage(toPath(path), cv::IMREAD_REDUCED_COLOR_4);
                 if (!image.empty()) thumbnail = toQImage(image, kThumbnailSize);
             } catch (const std::exception&) {
                 // Unreadable: the Vue stays listed, without a thumbnail.
@@ -943,30 +946,34 @@ void MainWindow::requestStill(QPointer<MireDialog> dialog) {
 }
 
 void MainWindow::openCatalogFile() {
-    if (setup_.catalogPath.empty()) {
-        QMessageBox::warning(this, tr("Catalogue de TP"), tr("Ce poste n'a pas de dossier de configuration."));
-        return;
-    }
-    if (!std::filesystem::exists(setup_.catalogPath)) {
-        const auto answer = QMessageBox::question(
-            this, tr("Catalogue de TP"),
-            tr("Ce poste n'a pas encore de catalogue de TP. En créer un d'exemple, à modifier ?"));
-        if (answer != QMessageBox::Yes) return;
-        try {
-            saveCatalog(exampleCatalog(), setup_.catalogPath);
-        } catch (const std::exception& e) {
-            QMessageBox::critical(this, tr("Catalogue de TP"), QString::fromStdString(e.what()));
+    // exists() throws for a folder it may not look into (review H3).
+    guardSlot(this, tr("Catalogue de TP"), [this] {
+        if (setup_.catalogPath.empty()) {
+            QMessageBox::warning(this, tr("Catalogue de TP"), tr("Ce poste n'a pas de dossier de configuration."));
             return;
         }
-    }
-    const QString path = toQString(setup_.catalogPath);
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
-        QMessageBox::information(this, tr("Catalogue de TP"),
-                                 tr("Ouvrez ce fichier dans un éditeur de texte (UTF-8) :\n%1").arg(path));
-        return;
-    }
-    QMessageBox::information(this, tr("Catalogue de TP"),
-                             tr("Une fois le fichier enregistré, choisissez Poste › Recharger le catalogue de TP."));
+        if (!std::filesystem::exists(setup_.catalogPath)) {
+            const auto answer = QMessageBox::question(
+                this, tr("Catalogue de TP"),
+                tr("Ce poste n'a pas encore de catalogue de TP. En créer un d'exemple, à modifier ?"));
+            if (answer != QMessageBox::Yes) return;
+            try {
+                saveCatalog(exampleCatalog(), setup_.catalogPath);
+            } catch (const std::exception& e) {
+                QMessageBox::critical(this, tr("Catalogue de TP"), QString::fromStdString(e.what()));
+                return;
+            }
+        }
+        const QString path = toQString(setup_.catalogPath);
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
+            QMessageBox::information(this, tr("Catalogue de TP"),
+                                     tr("Ouvrez ce fichier dans un éditeur de texte (UTF-8) :\n%1").arg(path));
+            return;
+        }
+        QMessageBox::information(
+            this, tr("Catalogue de TP"),
+            tr("Une fois le fichier enregistré, choisissez Poste › Recharger le catalogue de TP."));
+    });
 }
 
 void MainWindow::reloadCatalog() {

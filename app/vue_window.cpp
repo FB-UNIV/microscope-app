@@ -7,6 +7,7 @@
 #include "measurement.hpp"
 #include "phase_overlay_treatment.hpp"
 #include "qt_image.hpp"
+#include "slot_guard.hpp"
 #include "vickers.hpp"
 #include "wait_cursor.hpp"
 
@@ -337,8 +338,12 @@ void VueWindow::edit(Edit change) {
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Traitement non enregistré"), QString::fromStdString(e.what()));
     }
-    showSaved();
-    refreshTreatments();
+    // What is saved now, the change or the pipeline as it was: rendering it
+    // can throw too (a Treatment refusing this image).
+    guardSlot(this, tr("Affichage impossible"), [this] {
+        showSaved();
+        refreshTreatments();
+    });
 }
 
 void VueWindow::refreshTreatments() {
@@ -358,7 +363,8 @@ void VueWindow::refreshPrincipale() {
 }
 
 void VueWindow::previewLevels() {
-    view_->setImage(render(std::make_pair(black_->value(), white_->value())));
+    guardSlot(this, tr("Aperçu des niveaux"),
+              [this] { view_->setImage(render(std::make_pair(black_->value(), white_->value()))); });
 }
 
 void VueWindow::applyLevels() {

@@ -46,6 +46,7 @@ add_library(microscope_core
     src/levels_treatment.cpp
     src/echelle_treatment.cpp
     src/vue.cpp
+    src/image_io.cpp
     src/measurement.cpp
     src/phase_analysis.cpp
     src/phase_overlay_treatment.cpp

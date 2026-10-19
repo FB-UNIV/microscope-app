@@ -29,7 +29,8 @@ under strict warnings and sanitizers); the Qt app carries most of the risk and a
 | 7 | Try raw MJPG + `IMREAD_REDUCED_COLOR_2` for the preview | −60 % CPU per frame, needs a check on the A5 (§1.1) | medium, needs hardware |
 | 8 | Merge the e2e pipeline and the coverage/sanitizer jobs (§6) | Regressions in the windows and the camera thread are caught | done, to merge |
 
-**Status, same day:** rows 1–3 and §1.4 are implemented on the same branch as §6.
+**Status, same day:** rows 1–3 and §1.4 are implemented on the same branch as §6; rows 4–6 and M1
+on a follow-up branch (see the status under §2 HIGH).
 - `cv::setNumThreads(1)` is set in `main()`.
 - The live view goes through `CaptureStation::grabLivePreview` and `whiteBalancedPreview`: it shrinks
   first, then applies a lookup table. While the window still holds the last frame, the next one is
@@ -177,6 +178,25 @@ include `VueWindow::previewLevels` (`app/vue_window.cpp:357`), `VueWindow::edit`
 makes the 8-bit-only treatments throw while rendering — the app aborts with the camera open.
 Fix: a small helper that runs a slot body and shows a message on exception; reject or convert
 non-8-bit images in `Vue::load`.
+
+**Status, same day (H1–H3, M1, and M2's atomic image write):**
+- H1: `readImage` / `writeImage` (`include/image_io.hpp`) read and write through the `path` with
+  `imdecode` / `imencode`; Vue capture, load and export, `FileReplayCamera`, the thumbnails and
+  `camera_probe` use them, and `src/` builds every message with `u8string()`. Image writes go
+  through `<path>.tmp` renamed over the target (`writeFileAtomically`). `test_capture_station`
+  captures, lists, reloads and exports a Vue under "Fonte γ" — on Linux it passes either way; the
+  Windows CI job is the one that proves it.
+- H2: `CaptureStation::grabLivePreview` / `dropFrame` tolerate failed or empty grabs (10 in a row
+  before the first frame since `open()`, 5 after it), returning nothing so `PreviewWorker` pauses
+  50 ms and tries again; past that they throw and the worker emits `failed`. `capture()` and the
+  White reference never retry, and an empty frame fails them.
+- H3: `guardSlot` (`app/slot_guard.hpp`) wraps `VueWindow::previewLevels`, the redraw after
+  `VueWindow::edit` and `MainWindow::openCatalogFile`; the thumbnail decode already ran in a
+  `try` on the thread pool. `Vue::load` scales a 16-bit image to 8 bits (its file untouched) and
+  refuses any other depth.
+- M1: `Vue::addTreatment` takes the Treatment out again when the save fails.
+- Not done: M2's check-then-act between `exists()` and the write (the rename still replaces a file
+  created in between), M3, and an app-wide `QApplication::notify` net.
 
 ### MEDIUM
 

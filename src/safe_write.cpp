@@ -15,16 +15,16 @@ std::filesystem::path unusedAsidePath(const std::filesystem::path& path, const s
     return candidate;
 }
 
-void writeFileAtomically(const std::filesystem::path& path, const std::string& content, const std::string& context) {
+void writeFileAtomically(const std::filesystem::path& path, std::string_view content, const std::string& context) {
     auto temp = path;
     temp += ".tmp";
     std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-    out << content;
+    out.write(content.data(), static_cast<std::streamsize>(content.size()));
     out.close();
     if (out.fail()) {
         std::error_code ignored;
         std::filesystem::remove(temp, ignored);
-        throw std::runtime_error(context + ": failed to write " + temp.string());
+        throw std::runtime_error(context + ": failed to write " + temp.u8string());
     }
     std::filesystem::rename(temp, path);
 }
