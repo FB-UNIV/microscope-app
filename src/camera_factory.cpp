@@ -52,6 +52,7 @@ CameraConfig moticamA5Profile() {
     c.width = 3840;
     c.height = 2160;
     c.pixelFormat = "MJPG";
+    c.exposureMs = 7.8125;  // 2^-7 s: DirectShow's -7
     c.whiteBalanceKelvin = 5000.0;
     return c;
 }

@@ -1,9 +1,9 @@
 // User journey:
 //   As a teacher at the end of a TP, I print its Fiche: every Échantillon
-//   with its Vue principale, on as few A4 pages as fit — eight Échantillons
-//   photographed in 16:9 fit on one page — and an Échantillon nobody flagged
-//   a Vue principale for shows up as such instead of being skipped
-//   (ADR 0016).
+//   with its Vue principale, three per A4 page, one under the other, large
+//   enough to read the grains — eight Échantillons print on three pages —
+//   and an Échantillon nobody flagged a Vue principale for shows up as such
+//   instead of being skipped (ADR 0016, ADR 0019).
 
 #include "fiche.hpp"
 #include "vue.hpp"
@@ -33,34 +33,53 @@ bool insidePage(const FicheCell& cell, const FichePage& page) {
 int main() {
     const FichePage a4;
 
-    std::cout << "== layoutFiche: as few A4 pages as fit ==\n";
+    std::cout << "== layoutFiche: three per A4 page, one per row ==\n";
     {
         const auto cells = layoutFiche(8, 16.0 / 9.0);
-        check(cells.size() == 8 && cells.back().page == 0, "eight 16:9 Échantillons fit on one A4 page");
-        check(nearlyEqual(cells[0].x, 12.0) && nearlyEqual(cells[0].y, 12.0) && nearlyEqual(cells[1].x, 108.0) &&
-                  nearlyEqual(cells[1].y, 12.0) && nearlyEqual(cells[2].x, 12.0),
-              "two per row, left to right then down");
-        check(nearlyEqual(cells[0].width, 90.0) && nearlyEqual(cells[0].imageHeight, 90.0 * 9.0 / 16.0),
-              "each photo is a half-page wide, at its aspect ratio");
+        check(cells.size() == 8 && cells[2].page == 0 && cells[3].page == 1 && cells[5].page == 1 &&
+                  cells[6].page == 2 && cells.back().page == 2,
+              "eight 16:9 Échantillons print on three pages: 3 + 3 + 2");
+        // 273 mm of usable height = 3 rows of (75 mm photo + 12 mm caption)
+        // with two 6 mm gaps; 75 mm at 16:9 is 133.3 mm wide.
+        check(nearlyEqual(cells[0].imageHeight, 75.0) && nearlyEqual(cells[0].width, 75.0 * 16.0 / 9.0),
+              "each photo is a third of the page high, at its aspect ratio");
+        check(nearlyEqual(cells[0].y, 12.0) && nearlyEqual(cells[1].y, 105.0) && nearlyEqual(cells[2].y, 198.0) &&
+                  nearlyEqual(cells[3].y, 12.0),
+              "one under the other, and the fourth starts the next page at the top");
+        check(nearlyEqual(cells[0].x + cells[0].width / 2, a4.width / 2) && nearlyEqual(cells[1].x, cells[0].x),
+              "each photo is centred across the page");
         bool allInside = true;
         for (const auto& cell : cells) allInside = allInside && insidePage(cell, a4);
         check(allInside, "every photo and caption stays inside the margins");
 
-        const auto nine = layoutFiche(9, 16.0 / 9.0);
-        check(nine[8].page == 1 && nearlyEqual(nine[8].x, 12.0) && nearlyEqual(nine[8].y, 12.0),
-              "a ninth Échantillon starts a second page, top left");
+        const auto fourThree = layoutFiche(4, 4.0 / 3.0);
+        check(nearlyEqual(fourThree[0].imageHeight, 75.0) && nearlyEqual(fourThree[0].width, 100.0) &&
+                  fourThree[2].page == 0 && fourThree[3].page == 1,
+              "4:3 photos get the same height, narrower, still three per page");
 
-        const auto fourThree = layoutFiche(7, 4.0 / 3.0);
-        check(fourThree[5].page == 0 && fourThree[6].page == 1, "4:3 photos are taller: six per page");
+        const auto wide = layoutFiche(1, 4.0);
+        check(nearlyEqual(wide[0].width, 186.0) && nearlyEqual(wide[0].x, 12.0) && insidePage(wide[0], a4),
+              "a panorama too wide for its row is limited by the page width");
 
         const auto tall = layoutFiche(3, 0.2);
-        check(tall[0].imageHeight + a4.captionHeight <= a4.height - 2 * a4.margin + 1e-9 && insidePage(tall[0], a4) &&
-                  tall[2].page == 1,
-              "a photo too tall for a row is shrunk to fit a page");
+        check(tall[2].page == 0 && nearlyEqual(tall[0].imageHeight, 75.0) && insidePage(tall[0], a4),
+              "a tall narrow photo keeps its row, three per page");
+
+        FichePage grid;
+        grid.columns = 2;
+        grid.rows = 4;
+        const auto twoByFour = layoutFiche(9, 16.0 / 9.0, grid);
+        check(nearlyEqual(twoByFour[0].x, 12.0) && nearlyEqual(twoByFour[1].x, 108.0) &&
+                  nearlyEqual(twoByFour[1].y, 12.0) && twoByFour[7].page == 0 && twoByFour[8].page == 1,
+              "a page set to two columns lays out left to right, then down");
 
         check(layoutFiche(0, 16.0 / 9.0).empty(), "a TP with no Échantillon lays out nothing");
         check(!throwsWith<std::invalid_argument>([] { layoutFiche(1, 0.0); }).empty(),
               "an aspect ratio that isn't positive is refused");
+        FichePage cramped;
+        cramped.captionHeight = 100.0;
+        check(!throwsWith<std::invalid_argument>([&] { layoutFiche(1, 16.0 / 9.0, cramped); }).empty(),
+              "a page with no room left for a photo is refused");
     }
 
     std::cout << "\n== ficheEntries: each Échantillon with its Vue principale ==\n";
