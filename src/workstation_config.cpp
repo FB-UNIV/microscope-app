@@ -147,6 +147,7 @@ nlohmann::json WorkstationConfig::toJson() const {
     return {{"camera", camera.toJson()},
             {"calibrations", calibrationsJson},
             {"reference_grossissement", referenceGrossissement},
+            {"mire_pitch_microns", mirePitchMicrons},
             {"vue_root", vueRoot.u8string()}};
 }
 
@@ -174,6 +175,12 @@ WorkstationConfig WorkstationConfig::fromJson(const nlohmann::json& j) {
     // (reference()) rather than refusing the whole file and its White
     // reference with it.
     config.referenceGrossissement = j.value("reference_grossissement", std::string());
+    // Like the reference: a bad pitch falls back to the lab's mire rather
+    // than refusing the file and the White reference with it.
+    if (j.contains("mire_pitch_microns") && j.at("mire_pitch_microns").is_number()) {
+        const double pitch = j.at("mire_pitch_microns").get<double>();
+        if (std::isfinite(pitch) && pitch > 0.0) config.mirePitchMicrons = pitch;
+    }
     requireValidCalibrations(config.calibrations, "WorkstationConfig::fromJson");
     return config;
 }

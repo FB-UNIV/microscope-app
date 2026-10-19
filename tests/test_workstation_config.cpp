@@ -229,6 +229,20 @@ int main() {
                   WorkstationConfig::fromJson(edited).reference()->grossissement == "x40",
               "a file without it, or naming no Calibration, derives from the last one listed");
 
+        check(empty.mirePitchMicrons == 20.0 && j.at("mire_pitch_microns") == 20.0,
+              "the mire's period defaults to the lab's 20 µm");
+        WorkstationConfig micrometer;
+        micrometer.mirePitchMicrons = 10.0;
+        check(WorkstationConfig::fromJson(micrometer.toJson()).mirePitchMicrons == 10.0,
+              "another mire's period round-trips (#65)");
+        nlohmann::json badPitch = j;
+        badPitch["mire_pitch_microns"] = -5.0;
+        nlohmann::json textPitch = j;
+        textPitch["mire_pitch_microns"] = "ten";
+        check(WorkstationConfig::fromJson(badPitch).mirePitchMicrons == 20.0 &&
+                  WorkstationConfig::fromJson(textPitch).mirePitchMicrons == 20.0,
+              "a period that isn't a positive number falls back to 20 µm instead of losing the file");
+
         nlohmann::json twice = j;
         twice["calibrations"].push_back(Calibration{"x40", 2.6, 1024, 768}.toJson());
         check(!throwsWith<std::invalid_argument>([&] { WorkstationConfig::fromJson(twice); }).empty(),

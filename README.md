@@ -127,9 +127,13 @@ one.
   Échantillon without a Vue principale gets an empty frame, and the app
   lists them before writing. Then open the PDF to print it (ADR 0010).
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
-  on), *Calibrer un grossissement sur la mire* (click a line of the 20 µm
-  mire and the line N periods further, until two readings agree within
-  0.25 %; one objective is enough, the others are derived from it by their
+  on), *Calibrer un grossissement sur la mire* (click a line of the mire
+  and the line N periods further — a period is the gap between two
+  neighbouring lines, 20 µm on the lab's mire, set in the dialog for
+  another mire and kept in `workstation.json` — until two readings agree
+  within 0.25 %. Only the distance across the lines counts, in the
+  direction found in the image, so the clicks need not be level. One
+  objective is enough, the others are derived from it by their
   magnification and the toolbar shows "déduit de x5", ADR 0020), *Modifier /
   Recharger le catalogue de TP*, *Ouvrir le dossier des Vues*. Settings are
   saved to `workstation.json`.
