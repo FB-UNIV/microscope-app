@@ -213,6 +213,8 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     grossissement_ = new QComboBox;
     calibrationLabel_ = new QLabel;
     captureButton_ = new QPushButton(tr("Capturer (Espace)"));
+    // Object names: how app/tests/test_app_e2e.cpp finds the widgets it drives.
+    captureButton_->setObjectName(QStringLiteral("captureButton"));
     captureButton_->setShortcut(QKeySequence(Qt::Key_Space));
     captureButton_->setStyleSheet(QStringLiteral("font-weight: bold; padding: 4px 16px;"));
     QToolBar* how = addToolBar(tr("Capture"));
@@ -237,9 +239,11 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     vuesTitle_ = new QLabel;
     vuesTitle_->setWordWrap(true);
     vueList_ = new QListWidget;
+    vueList_->setObjectName(QStringLiteral("vueList"));
     vueList_->setIconSize(kThumbnailSize);
     vueList_->setToolTip(tr("Double-cliquez une Vue pour l'ouvrir : traitements, mesures, analyse de phases."));
     auto* open = new QPushButton(tr("Ouvrir la Vue"));
+    open->setObjectName(QStringLiteral("openVueButton"));
     auto* principale = new QPushButton(tr("★ Choisir comme Vue principale"));
     principale->setToolTip(tr("La Vue principale de l'Échantillon est celle de la Fiche du TP."));
     auto* file = new QPushButton(tr("Classer la Vue…"));
@@ -297,6 +301,7 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
     modeLabel_ = new QLabel;
     fpsLabel_ = new QLabel;
+    fpsLabel_->setObjectName(QStringLiteral("fpsLabel"));
     statusBar()->addWidget(modeLabel_);
     statusBar()->addPermanentWidget(fpsLabel_);
     // The OpenCV the app runs on, as camera_probe reports it. It also makes

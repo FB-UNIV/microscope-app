@@ -83,7 +83,7 @@ enable_testing()
 foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera
                   test_white_reference test_capture_station test_treatment_registration
                   test_workstation_config test_vue_store test_catalog test_mire_calibration
-                  test_vue_editing test_fiche test_measurement_marks)
+                  test_vue_editing test_fiche test_measurement_marks test_e2e_lab_session)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE microscope_core)
     target_compile_definitions(${test_name} PRIVATE MSAPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -93,6 +93,9 @@ foreach(test_name test_pipeline test_measurement test_phase_analysis test_vicker
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
 endforeach()
+# A whole lab session through the files the app reads and writes:
+# `ctest -L e2e` runs only the end-to-end tests.
+set_tests_properties(test_e2e_lab_session PROPERTIES LABELS e2e)
 
 # Hardware check for lab PCs (needs a camera, so it is built but not run
 # by CTest): lists cameras, frame size, pixel format, saves a test frame.

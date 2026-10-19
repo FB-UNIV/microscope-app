@@ -41,8 +41,14 @@ jobs:
       # Phase-analysis parity runs here on the in-repo legacy crops; the
       # full-size checks need the legacy TIFF archive (not in the repo), so
       # they print [SKIP] here and run locally with MSAPP_LEGACY_DATA_DIR.
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure --label-exclude e2e
+
+      # The e2e pipeline: a whole lab session through the files the core
+      # reads and writes (test_e2e_lab_session), then the real windows driven
+      # offscreen on the replay camera (test_app_e2e).
+      - name: End-to-end tests
+        run: ctest --test-dir build --output-on-failure --label-regex e2e
 
       # ADR 0012: the numpy reference is a second, independent implementation
       # of the legacy algorithm. Its output on the in-repo crops is the golden
@@ -53,6 +59,96 @@ jobs:
           python3 ../../../tools/legacy_phase_reference.py \
             CTTM1Ech1Vue1_crop256.png CTTM1Ech2Vue1_crop256.png CTTM1Ech3Vue1_crop256.png > "$RUNNER_TEMP/reference.txt"
           diff -u crops_reference.txt "$RUNNER_TEMP/reference.txt"
+
+  # Line coverage of every test, the GUI end-to-end test included. The core
+  # (src/, include/) is gated: it was 92.8 % covered on 2026-10-19, the gap
+  # being mostly OpenCvCamera, which needs a real camera. The Qt app is
+  # reported only until its own baseline is known.
+  coverage:
+    name: Coverage (GCC, gcovr)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev qt6-base-dev qt6-qpa-plugins gcovr
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="--coverage -O0"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Coverage report
+        run: |
+          mkdir -p coverage
+          gcovr --root . --filter 'src/' --filter 'include/' --filter 'app/' --exclude 'app/tests/' \
+            --html-details coverage/index.html --txt coverage/summary.txt --print-summary build
+          { echo '```'; cat coverage/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Core coverage gate (90 % of lines)
+        run: gcovr --root . --filter 'src/' --filter 'include/' --fail-under-line 90 --print-summary build
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage
+          retention-days: 30
+
+  # Memory errors and undefined behaviour (out-of-bounds pixel access, signed
+  # overflow, use-after-free across the camera thread) fail the build here.
+  # Leak checks cover the core; the Qt tests run without them, as Qt and
+  # fontconfig keep process-lifetime allocations LeakSanitizer reports.
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libopencv-dev nlohmann-json3-dev qt6-base-dev qt6-qpa-plugins
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build
+
+      # ASan's shadow memory does not fit with 32 bits of mmap randomisation
+      # (kernels >= 6.5): tests then loop on "AddressSanitizer:DEADLYSIGNAL"
+      # instead of running, as seen on WSL with kernel 6.18.
+      - name: Reduce ASLR entropy for ASan
+        run: sudo sysctl vm.mmap_rnd_bits=28
+
+      # tests/lsan.supp names the third-party leaks (OpenCV's USB camera
+      # probe); the full unwinder lets LeakSanitizer see those frames.
+      - name: Core tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:fast_unwind_on_malloc=0
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/lsan.supp
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure --timeout 300 --label-exclude gui
+
+      - name: App tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure --timeout 300 --label-regex gui
 
   windows:
     name: Windows (MSVC 2022, prebuilt OpenCV)
@@ -119,8 +215,11 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure --label-exclude e2e
+
+      - name: End-to-end tests
+        run: ctest --test-dir build -C Release --output-on-failure --label-regex e2e
 
       # Both bundles ship the MSVC runtime DLLs beside the exe, so they run
       # from a folder without admin rights or a VC++ redistributable install.
