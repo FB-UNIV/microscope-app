@@ -4,9 +4,10 @@
 
 # 6.4 is what Debian 12 and Ubuntu 24.04 ship (the Linux CI job builds
 # against it); the Windows bundle uses the Qt pinned in CI.
-find_package(Qt6 6.4 COMPONENTS Widgets)
+# Test (QtTest, part of qtbase like Widgets) runs the widget tests below.
+find_package(Qt6 6.4 COMPONENTS Widgets Test)
 if(NOT Qt6_FOUND)
-    message(FATAL_ERROR "Qt 6 (Widgets) not found. Point CMAKE_PREFIX_PATH at a Qt 6 install, "
+    message(FATAL_ERROR "Qt 6 (Widgets, Test) not found. Point CMAKE_PREFIX_PATH at a Qt 6 install, "
                         "or configure with -DMSAPP_BUILD_APP=OFF to build only the core and its tests.")
 endif()
 qt_standard_project_setup()
@@ -51,3 +52,15 @@ set_tests_properties(microscope_app_version PROPERTIES
                      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES=1"
                      TIMEOUT 60
                      PASS_REGULAR_EXPRESSION "^Microscope Capture ${msapp_version}")
+
+# Widget tests (QtTest): the mouse gestures of the image view — click, pan,
+# handle drag and right-click, rectangle mode. Offscreen, like the launch check.
+qt_add_executable(test_image_view
+    tests/test_image_view.cpp
+    image_view.cpp
+    image_view.hpp
+)
+target_include_directories(test_image_view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_image_view PRIVATE Qt6::Widgets Qt6::Test)
+add_test(NAME test_image_view COMMAND test_image_view)
+set_tests_properties(test_image_view PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)

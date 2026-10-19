@@ -50,6 +50,7 @@ add_library(microscope_core
     src/phase_analysis.cpp
     src/phase_overlay_treatment.cpp
     src/vickers.cpp
+    src/measurement_marks.cpp
     src/file_replay_camera.cpp
     src/opencv_camera.cpp
     src/camera_factory.cpp
@@ -82,7 +83,7 @@ enable_testing()
 foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera
                   test_white_reference test_capture_station test_treatment_registration
                   test_workstation_config test_vue_store test_catalog test_mire_calibration
-                  test_vue_editing test_fiche)
+                  test_vue_editing test_fiche test_measurement_marks)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE microscope_core)
     target_compile_definitions(${test_name} PRIVATE MSAPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

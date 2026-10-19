@@ -229,7 +229,7 @@ microscope's real Calibration.
 ## Building
 
 Requires CMake, a C++17 compiler, OpenCV, nlohmann-json, and Qt 6.4+
-(Widgets) for the app. Without Qt, configure with `-DMSAPP_BUILD_APP=OFF`
+(Widgets, and Test for the widget tests) for the app. Without Qt, configure with `-DMSAPP_BUILD_APP=OFF`
 to build only the core, its tests and `camera_probe`: the core never links
 Qt.
 
@@ -241,7 +241,9 @@ make
 ```
 
 `ctest` also runs `microscope_app --smoke-test` on Qt's offscreen platform:
-it shows the `MainWindow` and quits, so it needs no display. CI publishes
+it shows the `MainWindow` and quits, so it needs no display. There too,
+`test_image_view` (QtTest) drives the image view with the mouse: click,
+pan, dragging and right-clicking a measurement point, drawing a zone. CI publishes
 a ready-to-run Windows bundle of the app (`microscope_app-windows`: exe,
 Qt, OpenCV and MSVC runtime DLLs), built with the Qt version pinned in
 `.github/workflows/ci.yml`; on `master` it goes to the Releases page (see
@@ -261,7 +263,7 @@ their full paths), never in the source tree.
 ```
 include/            Public headers for the core lib
 src/                 Implementation
-app/                 Qt 6 desktop app (MainWindow) — the only code that links Qt
+app/                 Qt 6 desktop app (MainWindow) — the only code that links Qt; app/tests/ its QtTest widget tests
 tests/               Test harness (no test framework dependency — plain asserts + PASS/FAIL output)
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
