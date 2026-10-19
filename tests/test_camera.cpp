@@ -46,6 +46,24 @@ int main() {
         check(!cam.isOpen(), "close");
     }
     {
+        // Each file is decoded once, not on every grab (a 4K PNG per frame
+        // took a full core in --replay mode).
+        const fs::path frameC = dir / "c.png";
+        cv::imwrite(frameC.string(), cv::Mat(4, 6, CV_8UC3, cv::Scalar(1, 2, 3)));
+        FileReplayCamera cam({frameC});
+        cam.open();
+        cv::Mat first = cam.grab();
+        fs::remove(frameC);
+        first.setTo(cv::Scalar(9, 9, 9));
+        const cv::Mat again = cam.grab();
+        check(again.at<cv::Vec3b>(0, 0) == cv::Vec3b(1, 2, 3),
+              "a frame once decoded is replayed without reading its file again");
+        check(first.at<cv::Vec3b>(0, 0) == cv::Vec3b(9, 9, 9) && again.data != first.data,
+              "each grab is its own copy: changing one frame changes no other");
+        check(!throwsWith<std::runtime_error>([&] { cam.open(); }).empty(),
+              "open() looks at the files again, so reconnecting picks up a changed one");
+    }
+    {
         FileReplayCamera missing({dir / "nope.png"});
         check(!throwsWith<std::runtime_error>([&] { missing.open(); }).empty(), "missing frame fails at open");
         FileReplayCamera empty({});

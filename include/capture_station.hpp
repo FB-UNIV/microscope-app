@@ -49,6 +49,21 @@ public:
     // White-balanced frame: exactly what a capture would store.
     cv::Mat grabPreview();
 
+    // A frame for the live view, shrunk to fit within `fitWithin` before the
+    // White reference is applied (whiteBalancedPreview): at 4K shown in
+    // 1920x1080, 40 % less CPU per frame than shrinking grabPreview()
+    // (docs/reviews/2026-10-19-performance-and-quality-review.md, §1.1).
+    // Captures never go through here.
+    struct LivePreview {
+        cv::Mat image;
+        cv::Size grabbedSize;  // the frame as grabbed: what a Calibration must match
+    };
+    LivePreview grabLivePreview(cv::Size fitWithin);
+
+    // Grabs a frame and throws it away, keeping the stream moving while the
+    // window has not shown the previous one yet.
+    void dropFrame();
+
     // Grabs a frame, bakes the White reference in, and saves it as a new
     // immutable Vue whose sidecar records how it was captured — the settings
     // the camera accepted at open(), not merely the ones the profile asked

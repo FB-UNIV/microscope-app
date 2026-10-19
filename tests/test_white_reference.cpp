@@ -90,5 +90,68 @@ int main() {
         check(out4.at<cv::Vec4b>(0, 0) == cv::Vec4b(50, 100, 200, 77), "BGRA: colour scaled, alpha untouched");
     }
 
+    std::cout << "\n== whiteBalancedPreview: the live view shrinks first, then applies the gains ==\n";
+    {
+        const WhiteBalance gains{1.745, 1.0, 2.576};  // the legacy workstation's gains
+        // Every level up to 98 in each channel: no gain clips any of them.
+        cv::Mat dim(40, 99, CV_8UC3);
+        for (int r = 0; r < dim.rows; ++r) {
+            for (int c = 0; c < dim.cols; ++c) {
+                dim.at<cv::Vec3b>(r, c) = cv::Vec3b(static_cast<uchar>(c), static_cast<uchar>((c + r) % 99),
+                                                    static_cast<uchar>(98 - c));
+            }
+        }
+        const cv::Mat full = applyWhiteBalanceGains(dim, gains);
+        const cv::Mat same = whiteBalancedPreview(dim, gains, cv::Size());
+        check(same.size() == dim.size() && cv::norm(same, full, cv::NORM_INF) <= 1.0,
+              "at full size the lookup table gives applyWhiteBalanceGains' levels");
+
+        const cv::Mat shrunk = whiteBalancedPreview(dim, gains, cv::Size(50, 50));
+        check(shrunk.size() == cv::Size(50, 20), "shrunk to fit, aspect ratio kept");
+        cv::Mat reference;
+        cv::resize(full, reference, shrunk.size(), 0, 0, cv::INTER_AREA);
+        const double gap = cv::norm(shrunk, reference, cv::NORM_INF);
+        check(gap <= 3.0, "the same picture as shrinking the full-size result, up to rounding (got " +
+                              std::to_string(gap) + " levels)");
+    }
+    {
+        // Bright and dark pixels side by side: the gains clip some of them.
+        const WhiteBalance gains{1.745, 1.0, 2.576};
+        cv::Mat mixed(32, 256, CV_8UC3);
+        for (int r = 0; r < mixed.rows; ++r) {
+            for (int c = 0; c < mixed.cols; ++c) {
+                const auto level = static_cast<uchar>((r + c) % 2 == 0 ? c : 255 - c);
+                mixed.at<cv::Vec3b>(r, c) = cv::Vec3b(level, level, level);
+            }
+        }
+        const cv::Mat shrunk = whiteBalancedPreview(mixed, gains, cv::Size(128, 128));
+        cv::Mat reference;
+        cv::resize(applyWhiteBalanceGains(mixed, gains), reference, shrunk.size(), 0, 0, cv::INTER_AREA);
+        cv::Mat darker;
+        cv::subtract(reference, shrunk, darker);  // saturates at 0 where the preview is brighter
+        check(cv::norm(darker, cv::NORM_INF) <= 3.0,
+              "where gains clip, clipping after the average is never darker than the capture would be");
+    }
+    {
+        const cv::Mat grey(8, 8, CV_8UC1, cv::Scalar(77));
+        const cv::Mat greyShown = whiteBalancedPreview(grey, WhiteBalance{2.0, 1.0, 2.0}, cv::Size(4, 4));
+        check(greyShown.size() == cv::Size(4, 4) && cv::countNonZero(greyShown != 77) == 0,
+              "grey: shrunk, levels unchanged");
+
+        const cv::Mat bgr(2, 2, CV_8UC3, cv::Scalar(200, 100, 50));
+        check(whiteBalancedPreview(bgr, WhiteBalance{}, cv::Size(1920, 1080)).data == bgr.data,
+              "identity gains and a frame that already fits: no copy at all");
+
+        const cv::Mat bgra(1, 1, CV_8UC4, cv::Scalar(100, 100, 100, 77));
+        check(whiteBalancedPreview(bgra, WhiteBalance{2.0, 1.0, 0.5}, cv::Size()).at<cv::Vec4b>(0, 0) ==
+                  cv::Vec4b(50, 100, 200, 77),
+              "BGRA: colour scaled, alpha untouched");
+
+        check(throwsInvalidArgument([] {
+                  whiteBalancedPreview(cv::Mat(4, 4, CV_16UC3, cv::Scalar::all(1000)), WhiteBalance{}, cv::Size());
+              }),
+              "16-bit input is refused");
+    }
+
     return summary();
 }

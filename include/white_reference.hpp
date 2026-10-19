@@ -25,4 +25,16 @@ WhiteBalance computeWhiteReferenceGains(const cv::Mat& blankFieldBgr);
 // unchanged — gains only make sense on colour.
 cv::Mat applyWhiteBalanceGains(const cv::Mat& image, const WhiteBalance& gains);
 
+// The live preview's version, for display only: `image` is first shrunk
+// (INTER_AREA, aspect ratio kept) to fit inside `fitWithin` when larger,
+// then the gains are applied through a lookup table — on a 4K frame shown
+// at 1920x1080, a quarter of the pixels. Against shrinking
+// applyWhiteBalanceGains()'s result it differs by rounding only (a level or
+// two: the gain times half a level), except next to pixels a gain clips:
+// clipping after the average, the preview is brighter there. An empty
+// `fitWithin` keeps the size. With identity gains or grey input, nothing is
+// applied and the result may share `image`'s pixels. Throws
+// std::invalid_argument for anything but 8-bit grey, BGR or BGRA.
+cv::Mat whiteBalancedPreview(const cv::Mat& image, const WhiteBalance& gains, cv::Size fitWithin);
+
 } // namespace msapp

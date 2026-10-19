@@ -1,0 +1,7 @@
+# LeakSanitizer suppressions for the CI sanitizer job (LSAN_OPTIONS=suppressions=...).
+# Only third-party leaks belong here, never the project's own code.
+
+# Opening a device index (test_camera) makes the distro OpenCV probe USB
+# cameras through libusb and its gphoto2 backend; both keep what they list.
+leak:libusb_get_device_list
+leak:libgphoto2

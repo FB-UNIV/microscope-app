@@ -12,8 +12,8 @@ if(NOT Qt6_FOUND)
 endif()
 qt_standard_project_setup()
 
-qt_add_executable(microscope_app
-    main.cpp
+# Every window and widget, in a library the app and its GUI test both link.
+qt_add_library(microscope_app_ui STATIC
     main_window.cpp
     main_window.hpp
     location_picker.cpp
@@ -36,7 +36,11 @@ qt_add_executable(microscope_app
     vue_window.hpp
     wait_cursor.hpp
 )
-target_link_libraries(microscope_app PRIVATE microscope_core Qt6::Widgets)
+target_include_directories(microscope_app_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(microscope_app_ui PUBLIC microscope_core Qt6::Widgets)
+
+qt_add_executable(microscope_app main.cpp)
+target_link_libraries(microscope_app PRIVATE microscope_app_ui)
 set_target_properties(microscope_app PROPERTIES WIN32_EXECUTABLE ON)
 
 # Launch check: shows the MainWindow, then quits once the event loop runs.
@@ -64,3 +68,16 @@ target_include_directories(test_image_view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_image_view PRIVATE Qt6::Widgets Qt6::Test)
 add_test(NAME test_image_view COMMAND test_image_view)
 set_tests_properties(test_image_view PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
+
+# GUI end-to-end: drives the real windows on the replay camera — capture,
+# open the Vue, measure, phase analysis — offscreen. `ctest -L e2e` runs it
+# with the core's end-to-end test.
+qt_add_executable(test_app_e2e tests/test_app_e2e.cpp)
+target_link_libraries(test_app_e2e PRIVATE microscope_app_ui Qt6::Test)
+target_compile_definitions(test_app_e2e PRIVATE MSAPP_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_test(NAME test_app_e2e COMMAND test_app_e2e)
+set_tests_properties(test_app_e2e PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120 LABELS e2e)
+
+# Every test that starts Qt: the sanitizer job runs them without leak checks.
+set_property(TEST microscope_app_launch microscope_app_version test_image_view test_app_e2e
+             APPEND PROPERTY LABELS gui)

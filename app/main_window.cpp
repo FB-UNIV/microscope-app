@@ -179,6 +179,7 @@ Catalog exampleCatalog() {
 
 MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     : QMainWindow(parent), setup_(std::move(setup)), store_(setup_.vueRoot) {
+    thumbnailPool_.setMaxThreadCount(1);  // one thumbnail at a time, in list order
     // The build in the title bar, so a screenshot from a lab PC says which
     // build it came from.
     const QString version = QCoreApplication::applicationVersion();
@@ -213,6 +214,8 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     grossissement_ = new QComboBox;
     calibrationLabel_ = new QLabel;
     captureButton_ = new QPushButton(tr("Capturer (Espace)"));
+    // Object names: how app/tests/test_app_e2e.cpp finds the widgets it drives.
+    captureButton_->setObjectName(QStringLiteral("captureButton"));
     captureButton_->setShortcut(QKeySequence(Qt::Key_Space));
     captureButton_->setStyleSheet(QStringLiteral("font-weight: bold; padding: 4px 16px;"));
     QToolBar* how = addToolBar(tr("Capture"));
@@ -237,9 +240,11 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     vuesTitle_ = new QLabel;
     vuesTitle_->setWordWrap(true);
     vueList_ = new QListWidget;
+    vueList_->setObjectName(QStringLiteral("vueList"));
     vueList_->setIconSize(kThumbnailSize);
     vueList_->setToolTip(tr("Double-cliquez une Vue pour l'ouvrir : traitements, mesures, analyse de phases."));
     auto* open = new QPushButton(tr("Ouvrir la Vue"));
+    open->setObjectName(QStringLiteral("openVueButton"));
     auto* principale = new QPushButton(tr("★ Choisir comme Vue principale"));
     principale->setToolTip(tr("La Vue principale de l'Échantillon est celle de la Fiche du TP."));
     auto* file = new QPushButton(tr("Classer la Vue…"));
@@ -297,6 +302,7 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
     modeLabel_ = new QLabel;
     fpsLabel_ = new QLabel;
+    fpsLabel_->setObjectName(QStringLiteral("fpsLabel"));
     statusBar()->addWidget(modeLabel_);
     statusBar()->addPermanentWidget(fpsLabel_);
     // The OpenCV the app runs on, as camera_probe reports it. It also makes
@@ -337,6 +343,9 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
 MainWindow::~MainWindow() {
     stopCamera();
+    // A thumbnail task still running posts back to this window.
+    thumbnailPool_.clear();
+    thumbnailPool_.waitForDone();
 }
 
 void MainWindow::buildMenus() {
@@ -602,18 +611,49 @@ void MainWindow::refreshVues() {
 }
 
 void MainWindow::loadNextThumbnail() {
-    // One per event-loop turn, so the preview keeps running meanwhile.
+    // A thumbnail decoded before is set at once; the first one missing is
+    // decoded off the GUI thread, and thumbnailLoaded() asks for the next.
+    if (thumbnailLoading_) return;
     for (int i = 0; i < vueList_->count(); ++i) {
         QListWidgetItem* item = vueList_->item(i);
         if (item->data(kThumbnailRole).toBool()) continue;
-        item->setData(kThumbnailRole, true);
-        const cv::Mat image = cv::imread(toPath(item->data(kPathRole).toString()).string(), cv::IMREAD_REDUCED_COLOR_4);
-        if (!image.empty()) {
-            item->setIcon(QIcon(QPixmap::fromImage(toQImage(image, kThumbnailSize))));
+        const QString path = item->data(kPathRole).toString();
+        if (const auto known = thumbnails_.constFind(path); known != thumbnails_.constEnd()) {
+            item->setIcon(*known);
+            item->setData(kThumbnailRole, true);
+            continue;
         }
-        QTimer::singleShot(0, this, &MainWindow::loadNextThumbnail);
+        thumbnailLoading_ = true;
+        // ~MainWindow waits for the pool, so `this` outlives the task.
+        thumbnailPool_.start([this, path] {
+            QImage thumbnail;
+            try {
+                const cv::Mat image = cv::imread(toPath(path).string(), cv::IMREAD_REDUCED_COLOR_4);
+                if (!image.empty()) thumbnail = toQImage(image, kThumbnailSize);
+            } catch (const std::exception&) {
+                // Unreadable: the Vue stays listed, without a thumbnail.
+            }
+            QMetaObject::invokeMethod(
+                this, [this, path, thumbnail] { thumbnailLoaded(path, thumbnail); }, Qt::QueuedConnection);
+        });
         return;
     }
+}
+
+void MainWindow::thumbnailLoaded(const QString& path, const QImage& thumbnail) {
+    thumbnailLoading_ = false;
+    // Kept even when null, so an unreadable file isn't read again at every refresh.
+    const QIcon icon = thumbnail.isNull() ? QIcon() : QIcon(QPixmap::fromImage(thumbnail));
+    thumbnails_.insert(path, icon);
+    // The list may have been rebuilt meanwhile: find the Vue's item again.
+    for (int i = 0; i < vueList_->count(); ++i) {
+        QListWidgetItem* item = vueList_->item(i);
+        if (item->data(kPathRole).toString() == path) {
+            item->setIcon(icon);
+            item->setData(kThumbnailRole, true);
+        }
+    }
+    loadNextThumbnail();
 }
 
 void MainWindow::capture() {

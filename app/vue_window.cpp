@@ -112,6 +112,8 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
         banner_->hide();
     }
     view_ = new ImageView;
+    // Object names: how app/tests/test_app_e2e.cpp finds the widgets it drives.
+    view_->setObjectName(QStringLiteral("imageView"));
     auto* central = new QWidget;
     auto* centralLayout = new QVBoxLayout(central);
     centralLayout->setContentsMargins(0, 0, 0, 0);
@@ -159,6 +161,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     // Measurement and Dureté Vickers. The active tool's button stays pressed;
     // pressing it again, or Échap, puts it away.
     lengthTool_ = new QPushButton(tr("Mesurer une longueur"));
+    lengthTool_->setObjectName(QStringLiteral("lengthTool"));
     lengthTool_->setCheckable(true);
     vickersTool_ = new QPushButton(tr("Dureté Vickers"));
     vickersTool_->setCheckable(true);
@@ -172,6 +175,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     toolPrompt_->setStyleSheet(QStringLiteral("background: #e7f1ff; padding: 6px; font-weight: bold;"));
     toolPrompt_->hide();
     measureResult_ = new QLabel;
+    measureResult_->setObjectName(QStringLiteral("measureResult"));
     measureResult_->setWordWrap(true);
     measureResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     auto* clearMarks = new QPushButton(tr("Effacer les mesures"));
@@ -205,7 +209,9 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     zoneLabel_ = new QLabel;
     zoneLabel_->setWordWrap(true);
     auto* calcul = new QPushButton(tr("CALCUL : pourcentage des constituants"));
+    calcul->setObjectName(QStringLiteral("calculButton"));
     phaseResult_ = new QLabel;
+    phaseResult_->setObjectName(QStringLiteral("phaseResult"));
     phaseResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     histogram_ = new HistogramWidget;
     phaseMap_ = new QPushButton(tr("Afficher la carte des phases"));
