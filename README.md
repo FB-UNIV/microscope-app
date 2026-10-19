@@ -37,8 +37,9 @@ is migrated from the legacy app (ADR 0018).
 
 Each workstation keeps its `WorkstationConfig` — the camera profile (capture
 API, frame size, pixel format, exposure, colour temperature), the White
-reference, and one Calibration per Grossissement with the frame size it was
-measured at — in `workstation.json` under the per-user *local* app data
+reference, and the Calibrations measured on the mire, each with the frame
+size it was measured at (every other Grossissement is derived from the one
+measured last, ADR 0020) — in `workstation.json` under the per-user *local* app data
 folder (`defaultWorkstationConfigPath()`: `%LOCALAPPDATA%\microscope-app\`
 on Windows, so it never roams to another lab PC; `$XDG_CONFIG_HOME` or
 `~/.config` elsewhere). First launch loads the Moticam A5 profile with no
@@ -128,12 +129,17 @@ one.
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
   on), *Calibrer un grossissement sur la mire* (click a line of the 20 µm
   mire and the line N periods further, until two readings agree within
-  0.25 %), *Modifier / Recharger le catalogue de TP*, *Ouvrir le dossier des
-  Vues*. Settings are saved to `workstation.json`.
+  0.25 %; one objective is enough, the others are derived from it by their
+  magnification and the toolbar shows "déduit de x5", ADR 0020), *Modifier /
+  Recharger le catalogue de TP*, *Ouvrir le dossier des Vues*. Settings are
+  saved to `workstation.json`.
 - **Demo PC.** These options override the config for one run without
   changing it: `--device N` (a laptop's own webcam is often 0), `--api
   dshow|msmf|auto`, `--size WxH` (`0x0` = device default), and `--replay
-  IMAGE` (repeatable) to work on image files with no camera at all.
+  IMAGE` (repeatable) to work on image files with no camera at all. With no
+  microscope, `python tools/make_mire.py --pitch 31 --out mire.png` draws a
+  20 µm mire at 1.55 px/µm to calibrate on (`--replay mire.png`); then
+  replay a lab frame to capture with that Calibration.
 
 ## Building
 
@@ -172,7 +178,7 @@ tests/               Test harness (no test framework dependency — plain assert
 CONTEXT.md           Domain glossary — read this first
 docs/adr/            Architecture Decision Records — the "why" behind every structural choice
 docs/legacy/         Reverse-engineering report of the legacy Metal exe + legacy→new gap analysis
-tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port
+tools/               camera_probe.cpp — lab-PC camera check; legacy_phase_reference.py — independent reference for the phase-analysis port; make_mire.py — synthetic mire to calibrate without a microscope
 tests/fixtures/      256×256 crops of legacy views for the phase-analysis parity test
 ```
 
@@ -185,7 +191,7 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
    Step-by-step guide, including where to download the ready-to-run
    Windows bundle CI builds: [docs/hardware/camera-probe.md](docs/hardware/camera-probe.md).
 2. Try the capture app on that PC with a real session: write `catalog.json`,
-   measure the White reference, calibrate each objective on the mire,
+   measure the White reference, calibrate one objective on the mire,
    capture, then check a Measurement against the mire and Phase analysis
    against an archived result. Confirm the phase-map colours with a
    teacher (#25: the legacy plane order was inferred).
