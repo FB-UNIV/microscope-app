@@ -97,8 +97,9 @@ auto) and keeps it: set it to `7.8125` by hand on that PC to take the measured v
 
 ### Round 2 (probe v2) — with a real sample
 
-Put a polished sample under the microscope, focus it (MotiConnect live view is
-fine for focusing), **then close MotiConnect** and run:
+Ran on 2026-10-16; its results are in the table above. To repeat it on another
+PC or camera, put a polished sample under the microscope, focus it (MotiConnect
+live view is fine for focusing), **then close MotiConnect** and run:
 
 ```
 .\camera_probe.exe --api dshow --size 3840x2160 --out-dir r2-4k | Tee-Object r2-4k.txt
