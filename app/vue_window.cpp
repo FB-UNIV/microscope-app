@@ -21,6 +21,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRectF>
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -44,7 +45,8 @@ QString describe(const Treatment& treatment) {
         return VueWindow::tr("Échelle (%1)").arg(QString::fromStdString(echelle->calibration().grossissement));
     }
     if (const auto* overlay = dynamic_cast<const PhaseOverlayTreatment*>(&treatment)) {
-        return VueWindow::tr("Carte des phases (seuil %1)").arg(overlay->threshold());
+        return overlay->zone() ? VueWindow::tr("Carte des phases (seuil %1, sur une zone)").arg(overlay->threshold())
+                               : VueWindow::tr("Carte des phases (seuil %1)").arg(overlay->threshold());
     }
     return QString::fromStdString(treatment.type());
 }
@@ -178,7 +180,14 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
         measureResult_->setText(why);
     }
 
-    // Phase analysis.
+    // Phase analysis, on the whole photo or on a zone of it (#55).
+    auto* chooseZone = new QPushButton(tr("Choisir une zone…"));
+    chooseZone->setToolTip(tr("Deux clics aux coins opposés : l'analyse ne porte que sur cette zone, pour laisser de "
+                              "côté poussières et inclusions. Plus la zone est petite, moins elle compte de grains et "
+                              "moins le pourcentage est sûr."));
+    auto* wholeImage = new QPushButton(tr("Toute l'image"));
+    zoneLabel_ = new QLabel;
+    zoneLabel_->setWordWrap(true);
     auto* calcul = new QPushButton(tr("CALCUL : pourcentage des constituants"));
     phaseResult_ = new QLabel;
     phaseResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -187,10 +196,21 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     phaseMap_->setEnabled(false);
     auto* phaseBox = new QGroupBox(tr("Analyse de phases"));
     auto* phaseLayout = new QVBoxLayout(phaseBox);
+    auto* zoneRow = new QHBoxLayout;
+    zoneRow->addWidget(chooseZone);
+    zoneRow->addWidget(wholeImage);
+    phaseLayout->addLayout(zoneRow);
+    phaseLayout->addWidget(zoneLabel_);
     phaseLayout->addWidget(calcul);
     phaseLayout->addWidget(phaseResult_);
     phaseLayout->addWidget(histogram_);
     phaseLayout->addWidget(phaseMap_);
+    // The zone of the phase map saved with this Vue, so CALCUL counts the
+    // same pixels as last time.
+    if (const auto index = indexOf("phase_overlay")) {
+        zone_ = dynamic_cast<const PhaseOverlayTreatment&>(vue_.treatment(*index)).zone();
+    }
+    refreshZone();
 
     principale_ = new QPushButton;
     auto* exportCopy = new QPushButton(tr("Exporter une copie (traitements appliqués)…"));
@@ -239,6 +259,8 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
         measureResult_->clear();
     });
     connect(view_, &ImageView::clicked, this, &VueWindow::clicked);
+    connect(chooseZone, &QPushButton::clicked, this, [this] { startTool(Tool::Zone); });
+    connect(wholeImage, &QPushButton::clicked, this, [this] { setZone(std::nullopt); });
     connect(calcul, &QPushButton::clicked, this, &VueWindow::analysePhases);
     connect(phaseMap_, &QPushButton::clicked, this, &VueWindow::showPhaseMap);
     connect(principale_, &QPushButton::clicked, this, &VueWindow::flagPrincipale);
@@ -335,6 +357,10 @@ void VueWindow::removeTreatment() {
 void VueWindow::startTool(Tool tool) {
     tool_ = tool;
     clicks_.clear();
+    if (tool == Tool::Zone) {
+        zoneLabel_->setText(tr("Cliquez un coin de la zone à analyser, puis le coin opposé."));
+        return;
+    }
     measureResult_->setText(tool == Tool::Length
                                 ? tr("Cliquez les deux extrémités de la longueur.")
                                 : tr("Cliquez les deux extrémités de la première diagonale de l'empreinte, puis de "
@@ -345,6 +371,28 @@ void VueWindow::clicked(QPointF point) {
     if (!tool_) return;
     view_->addPoint(point);
     clicks_.push_back(point);
+    if (*tool_ == Tool::Zone) {
+        if (clicks_.size() < 2) {
+            zoneLabel_->setText(tr("Cliquez maintenant le coin opposé."));
+            return;
+        }
+        const QRectF corners = QRectF(clicks_[0], clicks_[1]).normalized();
+        const cv::Size size = vue_.original().size();
+        const cv::Rect zone = cv::Rect(cv::Point(qRound(corners.left()), qRound(corners.top())),
+                                       cv::Point(qRound(corners.right()), qRound(corners.bottom()))) &
+                              cv::Rect(cv::Point(0, 0), size);
+        tool_.reset();
+        clicks_.clear();
+        if (phaseZoneProblem(zone, size)) {
+            QMessageBox::warning(this, tr("Zone refusée"),
+                                 tr("Zone trop petite pour l'analyse : il faut au moins %1 × %1 pixels.")
+                                     .arg(minPhaseZoneSide(size)));
+            refreshZone();
+            return;
+        }
+        setZone(zone);
+        return;
+    }
     const auto at = [&](std::size_t i) { return cv::Point2d(clicks_[i].x(), clicks_[i].y()); };
     try {
         if (*tool_ == Tool::Length && clicks_.size() == 2) {
@@ -381,10 +429,20 @@ void VueWindow::analysePhases() {
     try {
         const WaitCursor wait;
         // On the photo as captured: Levels would shift the grey levels, and the
-        // Échelle's bar and the phase map would be counted as phases.
-        phases_ = analyzePhases(vue_.original());
+        // Échelle's bar and the phase map would be counted as phases. A 4K
+        // photo is analysed at the legacy camera's scale (ADR 0021).
+        phases_ = analyzeVuePhases(vue_.original(), zone_);
     } catch (const std::exception& e) {
         QMessageBox::warning(this, tr("Analyse de phases"), QString::fromStdString(e.what()));
+        return;
+    }
+    if (!phases_->threshold.found) {
+        // The legacy app printed its default 127 ± 42 and a meaningless %.
+        phases_.reset();
+        histogram_->clear();
+        phaseMap_->setEnabled(false);
+        phaseResult_->setText(tr("Seuil introuvable : l'image n'a pas de contours assez nets entre les phases "
+                                 "(floue, sans contraste ou vide). Aucun pourcentage n'est donné."));
         return;
     }
     const PhaseFractions& f = phases_->fractions;
@@ -398,11 +456,42 @@ void VueWindow::analysePhases() {
     phaseMap_->setEnabled(true);
 }
 
+void VueWindow::setZone(std::optional<cv::Rect> zone) {
+    zone_ = zone;
+    // The percentages and the map belonged to the previous zone.
+    phases_.reset();
+    phaseResult_->setText(zone_ ? tr("Lancez CALCUL sur cette zone.") : tr("Lancez CALCUL sur toute l'image."));
+    phaseMap_->setEnabled(false);
+    refreshZone();
+    if (zone_) {
+        const QPointF topLeft(zone_->x, zone_->y);
+        const QPointF topRight(zone_->x + zone_->width, zone_->y);
+        const QPointF bottomRight(zone_->x + zone_->width, zone_->y + zone_->height);
+        const QPointF bottomLeft(zone_->x, zone_->y + zone_->height);
+        view_->addLine(topLeft, topRight);
+        view_->addLine(topRight, bottomRight);
+        view_->addLine(bottomRight, bottomLeft);
+        view_->addLine(bottomLeft, topLeft);
+    }
+}
+
+void VueWindow::refreshZone() {
+    if (!zone_) {
+        zoneLabel_->setText(tr("Zone analysée : toute l'image."));
+        return;
+    }
+    const cv::Size size = vue_.original().size();
+    zoneLabel_->setText(tr("Zone analysée : %1x%2 px, %3 % de l'image.")
+                            .arg(zone_->width)
+                            .arg(zone_->height)
+                            .arg(100.0 * zone_->area() / (static_cast<double>(size.width) * size.height), 0, 'f', 0));
+}
+
 void VueWindow::showPhaseMap() {
     if (!phases_) return;
     const int threshold = phases_->threshold.threshold;
     edit([&] {
-        auto overlay = std::make_unique<PhaseOverlayTreatment>(threshold);
+        auto overlay = std::make_unique<PhaseOverlayTreatment>(threshold, zone_);
         if (const auto index = indexOf("phase_overlay")) {
             vue_.replaceTreatment(*index, std::move(overlay));
         } else if (const auto echelle = indexOf("echelle")) {

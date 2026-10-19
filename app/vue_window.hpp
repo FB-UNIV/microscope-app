@@ -31,7 +31,9 @@ class ImageView;
 //   stored photo (ADR 0003); a sidecar that lost something says so;
 // - Measurement and Dureté Vickers by clicking on the photo, with its own
 //   Calibration (ADR 0015) — refused on an uncalibrated Vue;
-// - Phase analysis: CALCUL, the percentages, the histogram with the Seuil;
+// - Phase analysis: CALCUL, the percentages, the histogram with the Seuil —
+//   on the whole photo or on a zone picked with two clicks (#55), kept with
+//   the phase map in the sidecar;
 // - flagging it as its Échantillon's Vue principale (ADR 0016);
 // - asking the main window to delete it (to the Corbeille).
 class VueWindow : public QMainWindow {
@@ -48,7 +50,7 @@ signals:
     void deleteRequested();
 
 private:
-    enum class Tool { Length, Vickers };
+    enum class Tool { Length, Vickers, Zone };
 
     // The Vue as rendered with `levels` in place of its own Levels (a live
     // preview), or exactly as saved.
@@ -68,6 +70,10 @@ private:
     void startTool(Tool tool);
     void clicked(QPointF point);
     void analysePhases();
+    // The zone CALCUL and the phase map work on; empty = the whole photo.
+    // Forgets results computed on the previous one.
+    void setZone(std::optional<cv::Rect> zone);
+    void refreshZone();
     void showPhaseMap();
     void exportCopy();
     void flagPrincipale();
@@ -88,6 +94,7 @@ private:
     QComboBox* load_;
     QLabel* measureResult_;
     QLabel* phaseResult_;
+    QLabel* zoneLabel_;
     HistogramWidget* histogram_;
     QPushButton* phaseMap_;
     QPushButton* principale_;
@@ -95,6 +102,7 @@ private:
     std::optional<Tool> tool_;
     std::vector<QPointF> clicks_;
     std::optional<PhaseAnalysis> phases_;
+    std::optional<cv::Rect> zone_;
 };
 
 } // namespace msapp
