@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [master, main]
+    # A version tag builds the bundles release.yml publishes as that version.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -57,7 +59,11 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
+      # Full history and tags: CMake stamps git describe (v0.1.0-3-gabc1234)
+      # into the bundles, and release.yml names the zips after it.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Pinned: this job also builds the camera_probe bundle shipped to lab
       # PCs, so OpenCV must not change between two runs. Bump on purpose (and

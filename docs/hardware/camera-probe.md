@@ -7,21 +7,24 @@ comes back. Nothing is installed; it runs from a folder and needs no admin right
 
 ## 1. Get the bundle
 
-CI builds a ready-to-run Windows bundle on every push and pull request.
+Every green build of `master` publishes a ready-to-run Windows bundle on the
+repo's Releases page.
 
-1. Open the repo on GitHub → **Actions** → latest green **CI** run on `master`.
-2. Under **Artifacts**, download **`camera_probe-windows`** (a zip; you must be
-   logged in to GitHub to download artifacts).
-3. Copy the zip to the lab PC (USB stick is fine).
+1. Open [Releases › latest](https://github.com/FB-UNIV/microscope-app/releases/tag/latest)
+   (the newest green build of `master`; a `vX.Y.Z` release is a build that stays put).
+2. Under **Assets**, download **`camera_probe-windows-<build>.zip`**.
+3. Copy the zip to the lab PC (USB stick is fine), or download it there directly.
 
 Or, from any machine with the GitHub CLI:
 
 ```
-gh run download --repo FB-UNIV/microscope-app --name camera_probe-windows
+gh release download latest --repo FB-UNIV/microscope-app --pattern 'camera_probe-windows-*.zip'
 ```
 
 The zip contains `camera_probe.exe`, the OpenCV DLL it needs, the Microsoft C++
-runtime DLLs, and this README.
+runtime DLLs, and this README. The first line of every report names the build,
+as the zip does (`camera_probe v0.1.0: OpenCV 4.13.0 ...`); `camera_probe --version`
+prints it alone.
 
 ## 2. Prepare the lab PC
 
@@ -63,8 +66,8 @@ frame rate.
 All options: `--api`, `--max-index N` (indexes to try, default 4), `--size WxH`,
 `--mjpg`, `--frames N` (frames timed for the fps measurement, default 20),
 `--auto-exposure V`, `--exposure V` (DirectShow: log2 seconds, -7 ≈ 7.8 ms, -8 ≈ 3.9 ms),
-`--wb KELVIN`, `--out-dir DIR`. Values are read back after setting, so the output
-shows whether the camera accepted them.
+`--wb KELVIN`, `--out-dir DIR`, `--version` (prints the build and exits). Values are
+read back after setting, so the output shows whether the camera accepted them.
 
 Exit code: 0 if at least one camera delivered a frame, 1 if none did, 2 for a bad
 option.
