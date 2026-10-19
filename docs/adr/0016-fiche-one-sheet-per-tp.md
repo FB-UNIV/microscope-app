@@ -1,6 +1,6 @@
 # A Fiche is one sheet per TP: each Échantillon's Vue principale with its Grossissement and Échelle
 
-**Status:** supersedes the one-page-per-Échantillon layout of [ADR 0010](0010-fiche-generated-artifact-cap-dropped.md); its rule that a Fiche is generated as a file before anything is printed still stands.
+**Status:** supersedes the one-page-per-Échantillon layout of [ADR 0010](0010-fiche-generated-artifact-cap-dropped.md); its rule that a Fiche is generated as a file before anything is printed still stands. Its own "as few A4 pages as fit" layout is in turn superseded by [ADR 0019](0019-fiche-three-vues-per-page.md) (three Vues per page, one per row); what a Fiche shows still stands.
 
 ADR 0010 left open what a Fiche shows beyond the Échantillon name and its Vue principale. Decided: a Fiche covers one TP. For each Échantillon of that TP it shows the name, the Vue principale rendered with its Treatments, the Grossissement, and the Échelle scale bar, laid out on as few A4 pages as fit. Nothing else is printed: no Department or date header, no Phase analysis or Dureté Vickers results, no lines for handwriting. Considered one page per Échantillon, ADR 0010's original framing: simpler to lay out, but a TP with 6–8 Échantillons would print 6–8 mostly empty pages, where the legacy app already grouped up to 3 views per page.
 
