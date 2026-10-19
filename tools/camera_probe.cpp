@@ -9,12 +9,14 @@
 //                [--size WIDTHxHEIGHT] [--mjpg] [--frames N]
 //                [--auto-exposure V] [--exposure V] [--wb KELVIN]
 //                [--out-dir DIR]
+//   camera_probe --version
 //
 // Exposure values are passed to OpenCV as-is: with DirectShow they are log2
 // seconds (-7 = 1/128 s ~ 7.8 ms); auto-exposure semantics vary by backend.
 //
 // Exit code 0 when at least one camera delivered a frame, 1 otherwise.
 
+#include "build_version.hpp"
 #include "camera_factory.hpp"
 
 #include <opencv2/core.hpp>
@@ -44,6 +46,7 @@ struct Options {
     std::optional<double> exposure;
     std::optional<double> wbKelvin;
     fs::path outDir = ".";
+    bool version = false;
 };
 
 // Printable four-character code when it is one (MJPG, YUY2, NV12), hex
@@ -95,6 +98,8 @@ Options parse(int argc, char** argv) {
             o.wbKelvin = std::stod(value());
         } else if (arg == "--out-dir") {
             o.outDir = value();
+        } else if (arg == "--version") {
+            o.version = true;
         } else {
             throw std::invalid_argument("unknown option " + arg);
         }
@@ -142,12 +147,19 @@ int main(int argc, char** argv) {
     } catch (const std::exception& e) {
         std::cerr << "camera_probe: " << e.what() << "\n"
                   << "usage: camera_probe [--api auto|dshow|msmf|v4l2] [--max-index N] [--size WIDTHxHEIGHT] "
-                     "[--mjpg] [--frames N] [--auto-exposure V] [--exposure V] [--wb KELVIN] [--out-dir DIR]\n";
+                     "[--mjpg] [--frames N] [--auto-exposure V] [--exposure V] [--wb KELVIN] [--out-dir DIR]\n"
+                     "       camera_probe --version\n";
         return 2;
     }
+    if (opt.version) {
+        std::cout << "camera_probe " << msapp::kBuildVersion << "\n";
+        return 0;
+    }
     fs::create_directories(opt.outDir);
-    // First line of every report: the OpenCV this bundle was built with and runs on.
-    std::cout << "camera_probe: OpenCV " << CV_VERSION << " (runtime " << cv::getVersionString() << ")\n";
+    // First line of every report: which build this is, and the OpenCV it was
+    // built with and runs on.
+    std::cout << "camera_probe " << msapp::kBuildVersion << ": OpenCV " << CV_VERSION << " (runtime "
+              << cv::getVersionString() << ")\n";
 
     int working = 0;
     for (int index = 0; index < opt.maxIndex; ++index) {

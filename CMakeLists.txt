@@ -13,6 +13,33 @@ endif()
 find_package(OpenCV REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+# Which build this is, shown by microscope_app (title bar, --version) and
+# camera_probe, and used in the release zip names: the tag (v0.1.0), the
+# commits since it (v0.1.0-3-gabc1234), the short commit before any tag,
+# "-dirty" with uncommitted changes. Read at configure time: re-run CMake to
+# refresh it. MSAPP_VERSION overrides it; a tree without git says "unknown".
+set(MSAPP_VERSION "" CACHE STRING "Build version shown by the app and camera_probe (empty: git describe)")
+set(msapp_version "${MSAPP_VERSION}")
+if(NOT msapp_version)
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(COMMAND "${GIT_EXECUTABLE}" describe --tags --match "v[0-9]*" --always --dirty
+                        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+                        RESULT_VARIABLE git_result
+                        OUTPUT_VARIABLE msapp_version
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                        ERROR_QUIET)
+        if(NOT git_result EQUAL 0)
+            set(msapp_version "")
+        endif()
+    endif()
+endif()
+if(NOT msapp_version)
+    set(msapp_version "unknown")
+endif()
+message(STATUS "microscope-app build version: ${msapp_version}")
+configure_file(cmake/build_version.hpp.in generated/build_version.hpp @ONLY)
+
 add_library(microscope_core
     src/treatment_factory.cpp
     src/format_microns.cpp
@@ -35,7 +62,8 @@ add_library(microscope_core
     src/mire_calibration.cpp
     src/fiche.cpp
 )
-target_include_directories(microscope_core PUBLIC include ${OpenCV_INCLUDE_DIRS})
+# generated/ holds build_version.hpp, for the app and camera_probe.
+target_include_directories(microscope_core PUBLIC include ${OpenCV_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(microscope_core PUBLIC ${OpenCV_LIBS} nlohmann_json::nlohmann_json)
 
 # Phase analysis must reproduce the legacy float arithmetic step by step
@@ -69,6 +97,8 @@ endforeach()
 # by CTest): lists cameras, frame size, pixel format, saves a test frame.
 add_executable(camera_probe tools/camera_probe.cpp)
 target_link_libraries(camera_probe PRIVATE microscope_core)
+add_test(NAME camera_probe_version COMMAND camera_probe --version)
+set_tests_properties(camera_probe_version PROPERTIES PASS_REGULAR_EXPRESSION "^camera_probe ${msapp_version}")
 
 # The Qt 6 app (app/). Qt stays out of microscope_core: turn this off to
 # build and test the core on a machine without Qt.

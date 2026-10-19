@@ -179,7 +179,12 @@ Catalog exampleCatalog() {
 
 MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     : QMainWindow(parent), setup_(std::move(setup)), store_(setup_.vueRoot) {
-    setWindowTitle(QGuiApplication::applicationDisplayName());
+    // The build in the title bar, so a screenshot from a lab PC says which
+    // build it came from.
+    const QString version = QCoreApplication::applicationVersion();
+    setWindowTitle(version.isEmpty()
+                       ? QGuiApplication::applicationDisplayName()
+                       : QStringLiteral("%1 — %2").arg(QGuiApplication::applicationDisplayName(), version));
     resize(1400, 860);
 
     banner_ = new QLabel;
