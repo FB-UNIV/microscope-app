@@ -37,13 +37,15 @@ struct CameraConfig {
     static CameraConfig fromJson(const nlohmann::json& j);
 };
 
-// The Moticam A5 as measured with tools/camera_probe (two lab runs,
+// The Moticam A5 as measured with tools/camera_probe (three lab runs,
 // docs/hardware/camera-probe.md): DirectShow, the only API exposing white
-// balance; 3840x2160 MJPG — its HD modes are MJPG anyway, and the frame rate
-// is exposure-bound, so one 4K stream serves preview and capture; colour
-// temperature locked at the camera's own 5000 K default to stop auto-WB
-// drift. Exposure stays with the camera until measured through a microscope;
-// the white reference stays identity until calibrated on each microscope.
+// balance; 3840x2160 MJPG — its HD modes are MJPG anyway, and at about
+// 15 fps one 4K stream serves preview and capture; colour temperature
+// locked at the camera's own 5000 K default to stop auto-WB drift; exposure
+// fixed at 7.8 ms (DirectShow -7), which filled the histogram without
+// clipping at x5 through the microscope — the lamp knob sets brightness, so
+// every capture of a session is taken alike. The white reference stays
+// identity until calibrated on each microscope.
 CameraConfig moticamA5Profile();
 
 // Maps a CameraConfig::captureApi name to the OpenCV cv::CAP_* id.

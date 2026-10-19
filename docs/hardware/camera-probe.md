@@ -76,19 +76,24 @@ The `*.txt` files and the PNGs of the A5. They decide the camera defaults
 
 ## Moticam A5: known so far
 
-From two lab runs (probe v1 on 2026-10-12, probe v2 on 2026-10-15; camera pointed at a
-plain wall, no microscope or specimen):
+From three lab runs: probe v1 on 2026-10-12 and probe v2 on 2026-10-15 with the camera
+pointed at a plain wall, then round 2 on 2026-10-16 through the microscope, on a
+polished ferrite–pearlite steel at x5 plus one run at x10:
 
 | Item | Result |
 |---|---|
 | Index / APIs | index 0 is the A5; opens with both DirectShow and Media Foundation. Use **DirectShow**: only it exposes white balance. |
 | Default mode | 1024×768, format `0xE436EB7D` (believed to be DirectShow's RGB24 subtype; first 32 bits of its GUID) |
 | HD modes | **3840×2160 and 1920×1080 come as MJPG** whether or not `--mjpg` is passed; frames show JPEG 8×8 block edges (lossy) |
-| Frame rate | measured ~10 fps at 4K **and** at 1080p in auto exposure, 15 fps at 4K with exposure -9 → exposure-bound, not bandwidth-bound; DirectShow reports fps as 0 |
-| Exposure | manual `--exposure` works (-9 ≈ 2 ms read back, image darkens); `auto_exposure` is not readable through DirectShow (always -1) |
-| White balance | manual `--wb` works (auto_wb → 0, temperature read back); **auto WB is unstable** — the same wall came out pink in one run and lavender in the next, always green-deficient |
+| Frame rate | through the microscope: **4K MJPG 13–15 fps** at exposure -7 to -9, **1080p MJPG 30.6 fps** at -7. The ~10 fps of the wall runs was auto exposure. DirectShow reports fps as 0 |
+| Exposure | manual `--exposure` works with no `--auto-exposure` flag (`0` and `0.25` change nothing); `auto_exposure` is not readable through DirectShow (always -1). At x5, **-7 (7.8 ms) fills the histogram with no clipping** (mean BGR 108 / 137 / 180, 0.0004 % clipped); -9 is darker (82 / 104 / 137). At x10 with the lamp turned up, -8 clipped 82.6 %: brightness follows the lamp knob. The profile fixes -7 (`moticamA5Profile()`). |
+| White balance | manual `--wb` works (auto_wb → 0, temperature read back, 4500 K accepted); **auto WB is unstable** — the same wall came out pink in one run and lavender in the next, always green-deficient. Under the microscope lamp, 5000 K plus the White reference gave colours the teacher found right. |
 | Persistence | **settings survive between programs**: a run started at exposure -9 left by the previous run. The app must apply its full camera profile on every open. Unplug/replug to reset. |
-| Not yet known | whether 3840×2160 is native or upscaled (a wall has no detail); exposure and colour through the microscope |
+| Resolution | at 1:1 the 4K frame is soft, with only a little more fine texture than 1080p enlarged ×2 (some of it JPEG noise): probably upscaled or limited by the optics at x5. 4K is kept: Calibrations are tied to it (ADR 0015) and 15 fps is enough. |
+| Dust | the x5 frame shows blurred dark blobs, out of focus while the sample is sharp: dust on the optics. Phase analysis counts them as dark phase (#55). |
+
+A `workstation.json` saved before exposure was fixed holds `"exposure_ms": null` (camera
+auto) and keeps it: set it to `7.8125` by hand on that PC to take the measured value.
 
 ### Round 2 (probe v2) — with a real sample
 
