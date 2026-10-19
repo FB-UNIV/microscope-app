@@ -113,8 +113,9 @@ one.
   closed first.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
   an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
-  Treatments and Échelle, its name and Grossissement, two per row, as few
-  pages as fit (`layoutFiche()`: eight 16:9 photos per page). An
+  Treatments and Échelle, its name and Grossissement, three per page, one
+  per row (`layoutFiche()`, ADR 0019: a 16:9 photo prints about 133 × 75
+  mm). An
   Échantillon without a Vue principale gets an empty frame, and the app
   lists them before writing. Then open the PDF to print it (ADR 0010).
 - **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp

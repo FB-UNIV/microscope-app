@@ -65,7 +65,7 @@ A fallback bucket for Vues captured before a workstation has ever synced real De
 _Avoid_: none — this is intentionally the escape hatch, not a normal state
 
 **Fiche**:
-A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar, laid out on as few A4 pages as fit (ADR 0016). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
+A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar (ADR 0016), three per A4 page, one per row (ADR 0019). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
 _Avoid_: Report (less specific), Print (that's the action, not the artifact)
 
 **Vue principale**:
