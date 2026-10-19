@@ -59,6 +59,10 @@ QString micronsLabel(const std::string& label) {
     return QString::fromStdString(label).replace(QStringLiteral(" um"), QStringLiteral(" µm"));
 }
 
+// Marks are kept in image pixels; the view speaks QPointF.
+cv::Point2d toImagePoint(QPointF point) { return {point.x(), point.y()}; }
+QPointF toViewPoint(cv::Point2d point) { return {point.x, point.y}; }
+
 QString captureText(const Vue& vue) {
     QStringList lines;
     lines << VueWindow::tr("Fichier : %1").arg(toQString(vue.imagePath().filename()));
@@ -267,7 +271,6 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     connect(clearMarks, &QPushButton::clicked, this, [this] {
         cancelTool();
         marks_.clear();
-        current_.reset();
         measureResult_->clear();
         redrawMarks();
     });
@@ -275,7 +278,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     // A Vickers value follows the load picked, for every indent shown.
     connect(load_, &QComboBox::currentIndexChanged, this, [this] {
         redrawMarks();
-        if (current_) showResult(marks_[*current_]);
+        if (const auto current = marks_.current()) showResult(marks_.marks()[*current]);
     });
     connect(view_, &ImageView::clicked, this, &VueWindow::clicked);
     connect(view_, &ImageView::handleMoved, this, &VueWindow::handleMoved);
@@ -385,12 +388,12 @@ void VueWindow::startTool(Tool tool) {
     cancelTool();  // drops what the previous tool left half-done
     if (sameTool) return;  // its button pressed again: put it away
     tool_ = tool;
-    if (tool != Tool::Zone) marks_.push_back(Mark{tool, {}});
+    if (tool != Tool::Zone) marks_.start(tool == Tool::Vickers ? MeasureTool::Vickers : MeasureTool::Length);
     refreshTool();
 }
 
 void VueWindow::cancelTool() {
-    if (!marks_.empty() && marks_.back().points.size() < pointsNeeded(marks_.back().tool)) marks_.pop_back();
+    marks_.cancel();
     tool_.reset();
     clicks_.clear();
     refreshZone();
@@ -410,7 +413,7 @@ void VueWindow::refreshTool() {
         zoneLabel_->setText(prompt + tr(" (Échap : annuler)"));
         prompt.clear();  // shown beside the zone buttons, not with the measurements
     } else if (tool_) {
-        const std::size_t done = marks_.back().points.size();
+        const std::size_t done = marks_.pendingPoints();
         if (*tool_ == Tool::Length) {
             prompt = done == 0 ? tr("Longueur — point 1/2 : cliquez une extrémité.")
                                : tr("Longueur — point 2/2 : cliquez l'autre extrémité.");
@@ -443,13 +446,8 @@ void VueWindow::clicked(QPointF point) {
         applyZone(QRectF(clicks_[0], clicks_[1]));
         return;
     }
-    Mark& mark = marks_.back();
-    mark.points.push_back(point);
-    if (mark.points.size() == pointsNeeded(mark.tool)) {
-        current_ = marks_.size() - 1;
-        showResult(mark);
-        marks_.push_back(Mark{*tool_, {}});  // the tool stays out for the next one
-    }
+    // A finished reading is shown; the tool stays out for the next one.
+    if (marks_.click(toImagePoint(point))) showResult(marks_.marks()[*marks_.current()]);
     refreshTool();
     redrawMarks();
 }
@@ -471,44 +469,16 @@ void VueWindow::applyZone(QRectF corners) {
     setZone(zone);
 }
 
-std::optional<std::pair<std::size_t, std::size_t>> VueWindow::markPointAt(int index) const {
-    if (index < 0) return std::nullopt;
-    std::size_t remaining = static_cast<std::size_t>(index);
-    for (std::size_t i = 0; i < marks_.size(); ++i) {
-        if (remaining < marks_[i].points.size()) return std::make_pair(i, remaining);
-        remaining -= marks_[i].points.size();
-    }
-    return std::nullopt;
-}
-
 void VueWindow::handleMoved(int index, QPointF point) {
-    if (const auto at = markPointAt(index)) {
-        Mark& mark = marks_[at->first];
-        mark.points[at->second] = point;
-        if (mark.points.size() == pointsNeeded(mark.tool)) {
-            current_ = at->first;
-            showResult(mark);
-        }
-    }
+    if (marks_.moveHandle(index, toImagePoint(point))) showResult(marks_.marks()[*marks_.current()]);
     redrawMarks();
 }
 
 void VueWindow::removeHandle(int index) {
-    const auto at = markPointAt(index);
-    if (!at) return;
-    const std::size_t i = at->first;
-    const bool pending = tool_ && tool_ != Tool::Zone && i + 1 == marks_.size();
-    if (pending) {
-        marks_[i].points.erase(marks_[i].points.begin() + static_cast<std::ptrdiff_t>(at->second));
-    } else {
-        marks_.erase(marks_.begin() + static_cast<std::ptrdiff_t>(i));
-        if (current_ == i) {
-            current_.reset();
-            measureResult_->setText(tr("Mesure supprimée."));
-        } else if (current_ && *current_ > i) {
-            --*current_;
-        }
-    }
+    if (!marks_.markPointAt(index)) return;
+    const bool shown = marks_.current().has_value();
+    marks_.removeHandle(index);
+    if (shown && !marks_.current()) measureResult_->setText(tr("Mesure supprimée."));
     refreshTool();
     redrawMarks();
 }
@@ -517,15 +487,10 @@ void VueWindow::undoPoint() {
     if (tool_ == Tool::Zone) {
         if (!clicks_.empty()) clicks_.pop_back();
     } else if (tool_) {
-        // Nothing clicked yet on the new reading: take back the one just finished.
-        if (marks_.back().points.empty() && marks_.size() >= 2 && marks_[marks_.size() - 2].tool == *tool_) {
-            marks_.pop_back();
-            if (current_ == marks_.size() - 1) {
-                current_.reset();
-                measureResult_->clear();
-            }
-        }
-        if (!marks_.back().points.empty()) marks_.back().points.pop_back();
+        // Reopening the reading just finished takes its value away.
+        const bool shown = marks_.current().has_value();
+        marks_.undo();
+        if (shown && !marks_.current()) measureResult_->clear();
     } else {
         return;
     }
@@ -534,9 +499,9 @@ void VueWindow::undoPoint() {
 }
 
 void VueWindow::showResult(const Mark& mark) {
-    const auto at = [&](std::size_t i) { return cv::Point2d(mark.points[i].x(), mark.points[i].y()); };
+    const auto at = [&](std::size_t i) { return mark.points[i]; };
     try {
-        if (mark.tool == Tool::Length) {
+        if (mark.tool == MeasureTool::Length) {
             const Measurement length(at(0), at(1), vue_);
             measureResult_->setText(tr("Longueur : %1 (%2 px)")
                                         .arg(micronsLabel(length.label()))
@@ -572,17 +537,18 @@ void VueWindow::redrawMarks() {
     for (const QPointF& corner : clicks_) view_->addPoint(corner);
 
     std::vector<QPointF> handles;
-    for (const Mark& mark : marks_) {
-        const std::vector<QPointF>& p = mark.points;
+    for (const Mark& mark : marks_.marks()) {
+        std::vector<QPointF> p;
+        for (const cv::Point2d& point : mark.points) p.push_back(toViewPoint(point));
         handles.insert(handles.end(), p.begin(), p.end());
         if (p.size() >= 2) view_->addLine(p[0], p[1]);
         if (p.size() == 4) view_->addLine(p[2], p[3]);
-        if (p.size() != pointsNeeded(mark.tool)) continue;
-        const auto at = [&](std::size_t i) { return cv::Point2d(p[i].x(), p[i].y()); };
+        if (!mark.complete()) continue;
+        const auto at = [&](std::size_t i) { return mark.points[i]; };
         try {
             const Measurement first(at(0), at(1), vue_);
             view_->addLabel((p[0] + p[1]) / 2, micronsLabel(first.label()));
-            if (mark.tool == Tool::Vickers) {
+            if (mark.tool == MeasureTool::Vickers) {
                 const Measurement second(at(2), at(3), vue_);
                 view_->addLabel((p[2] + p[3]) / 2, micronsLabel(second.label()));
                 const VickersResult hv = vickersHardness(first, second, load_->currentData().toDouble());

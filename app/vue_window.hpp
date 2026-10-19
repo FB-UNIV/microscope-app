@@ -1,5 +1,6 @@
 #pragma once
 
+#include "measurement_marks.hpp"
 #include "phase_analysis.hpp"
 #include "vue.hpp"
 #include "vue_store.hpp"
@@ -55,16 +56,6 @@ signals:
 private:
     enum class Tool { Length, Vickers, Zone };
 
-    // One measurement on the photo: two points for a length, four for a
-    // Vickers indent (two diagonals). Kept, so its points can be dragged and
-    // its value recomputed (#56); gone when the window closes, like every
-    // Measurement.
-    struct Mark {
-        Tool tool;
-        std::vector<QPointF> points;
-    };
-    static std::size_t pointsNeeded(Tool tool) { return tool == Tool::Vickers ? 4 : 2; }
-
     // The Vue as rendered with `levels` in place of its own Levels (a live
     // preview), or exactly as saved.
     QImage render(std::optional<std::pair<int, int>> levels = std::nullopt) const;
@@ -93,9 +84,6 @@ private:
     // Backspace: takes back the last point clicked, reopening the reading
     // just finished if need be.
     void undoPoint();
-    // The Mark and point a handle index stands for (handles are every
-    // Mark's points, in order).
-    std::optional<std::pair<std::size_t, std::size_t>> markPointAt(int index) const;
     // The zone tool's rectangle, dragged or clicked corner to corner.
     void applyZone(QRectF corners);
     // Draws the zone and every Mark, with its values, and makes the Marks'
@@ -138,10 +126,8 @@ private:
 
     std::optional<Tool> tool_;
     // Finished Marks, then — while a measuring tool is active — the one
-    // being clicked.
-    std::vector<Mark> marks_;
-    // The Mark whose value measureResult_ shows.
-    std::optional<std::size_t> current_;
+    // being clicked; its current() is the Mark measureResult_ shows.
+    MeasurementMarks marks_;
     std::vector<QPointF> clicks_;  // the zone's first corner, while picking it
     std::optional<PhaseAnalysis> phases_;
     std::optional<cv::Rect> zone_;
