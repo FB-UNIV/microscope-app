@@ -45,9 +45,12 @@ struct AppSetup {
 // why. The side panel shows the TP's instructions and the Échantillon's
 // Vues, one of them flagged Vue principale (ADR 0016), or the Unsorted
 // Vues, each filed into its Échantillon with Classer la Vue (ADR 0008) —
-// as is a Vue captured under the wrong Échantillon. The Poste menu
-// measures the White reference (ADR 0014) and calibrates a Grossissement on
-// the mire.
+// as is a Vue captured under the wrong Échantillon — or deleted, to the
+// Corbeille of the Vue folder, where it can still be recovered. F9 hides
+// the panel for a bigger live view (remembered in ui.ini beside
+// workstation.json). The Poste menu measures the White reference (ADR
+// 0014) and calibrates a
+// Grossissement on the mire.
 //
 // The camera lives on a worker thread (PreviewWorker); a capture, a White
 // reference or a still for the mire is a CameraJob run there between two
@@ -79,6 +82,10 @@ private:
     void flagPrincipale();
     void openVue();
     void fileSelectedVue();
+    void deleteSelectedVue();
+    // Asks, closes any window open on `vue`, then moves it to the Corbeille
+    // (VueStore::deleteVue). From the list or from the Vue's own window.
+    void deleteVue(const std::filesystem::path& vue);
     void generateFiche();
     void measureWhiteReference();
     void calibrateGrossissement();
