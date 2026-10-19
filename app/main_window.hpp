@@ -46,8 +46,10 @@ struct AppSetup {
 // Vues, one of them flagged Vue principale (ADR 0016), or the Unsorted
 // Vues, each filed into its Échantillon with Classer la Vue (ADR 0008) —
 // as is a Vue captured under the wrong Échantillon — or deleted, to the
-// Corbeille of the Vue folder, where it can still be recovered. The Poste
-// menu measures the White reference (ADR 0014) and calibrates a
+// Corbeille of the Vue folder, where it can still be recovered. F9 hides
+// the panel for a bigger live view (remembered in ui.ini beside
+// workstation.json). The Poste menu measures the White reference (ADR
+// 0014) and calibrates a
 // Grossissement on the mire.
 //
 // The camera lives on a worker thread (PreviewWorker); a capture, a White

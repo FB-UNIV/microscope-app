@@ -20,21 +20,22 @@ std::vector<FicheCell> layoutFiche(std::size_t count, double imageAspect, const 
         throw std::invalid_argument("layoutFiche: the photos' aspect ratio must be a positive number");
     }
     const int columns = std::max(1, page.columns);
+    const int rows = std::max(1, page.rows);
     const double usableWidth = page.width - 2 * page.margin;
     const double usableHeight = page.height - 2 * page.margin;
-    double cellWidth = (usableWidth - (columns - 1) * page.gap) / columns;
-    double imageHeight = cellWidth / imageAspect;
-    // A photo taller than a page row: shrink it to fill one page instead.
-    if (imageHeight + page.captionHeight > usableHeight) {
-        imageHeight = usableHeight - page.captionHeight;
-        cellWidth = imageHeight * imageAspect;
-    }
+    // The largest photo that fits both its column and its row with the
+    // caption under it.
+    const double widthLimit = (usableWidth - (columns - 1) * page.gap) / columns;
+    const double heightLimit = (usableHeight - (rows - 1) * page.gap) / rows - page.captionHeight;
+    const double imageHeight = std::min(widthLimit / imageAspect, heightLimit);
+    const double cellWidth = imageHeight * imageAspect;
     if (cellWidth <= 0.0 || imageHeight <= 0.0) {
         throw std::invalid_argument("layoutFiche: the page has no room for a single photo");
     }
     const double rowHeight = imageHeight + page.captionHeight;
-    const int rowsPerPage = std::max(1, static_cast<int>(std::floor((usableHeight + page.gap) / (rowHeight + page.gap))));
-    const int perPage = rowsPerPage * columns;
+    const double rowWidth = columns * cellWidth + (columns - 1) * page.gap;
+    const double left = page.margin + (usableWidth - rowWidth) / 2;
+    const int perPage = rows * columns;
 
     std::vector<FicheCell> cells;
     cells.reserve(count);
@@ -43,7 +44,7 @@ std::vector<FicheCell> layoutFiche(std::size_t count, double imageAspect, const 
         const int onPage = index % perPage;
         FicheCell cell;
         cell.page = index / perPage;
-        cell.x = page.margin + (onPage % columns) * (cellWidth + page.gap);
+        cell.x = left + (onPage % columns) * (cellWidth + page.gap);
         cell.y = page.margin + (onPage / columns) * (rowHeight + page.gap);
         cell.width = cellWidth;
         cell.imageHeight = imageHeight;

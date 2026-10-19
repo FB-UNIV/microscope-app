@@ -30,6 +30,7 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPushButton>
+#include <QSettings>
 #include <QSignalBlocker>
 #include <QStatusBar>
 #include <QThread>
@@ -37,6 +38,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QUrl>
+#include <QVariant>
 #include <QVBoxLayout>
 
 #include <opencv2/core/utility.hpp>
@@ -142,6 +144,22 @@ std::optional<VueLocation> pickEchantillon(QWidget* parent, const Catalog& catal
     refresh();
     if (dialog.exec() != QDialog::Accepted) return std::nullopt;
     return picker->location();
+}
+
+// This PC's window preferences, such as a hidden side panel, in ui.ini
+// beside workstation.json rather than in it: they are the operator's
+// choice, not part of the camera or microscope setup. Nothing is kept when
+// there is no config folder.
+const QString kPanelVisibleKey = QStringLiteral("mainWindow/panelVisible");
+
+QVariant uiSetting(const std::filesystem::path& configPath, const QString& key, const QVariant& fallback) {
+    if (configPath.empty()) return fallback;
+    return QSettings(toQString(configPath.parent_path() / "ui.ini"), QSettings::IniFormat).value(key, fallback);
+}
+
+void setUiSetting(const std::filesystem::path& configPath, const QString& key, const QVariant& value) {
+    if (configPath.empty()) return;
+    QSettings(toQString(configPath.parent_path() / "ui.ini"), QSettings::IniFormat).setValue(key, value);
 }
 
 // A small catalog to start from, written when a teacher opens a catalog
@@ -253,6 +271,24 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     dock->setWidget(side);
     dock->setMinimumWidth(300);
     addDockWidget(Qt::RightDockWidgetArea, dock);
+
+    // Hides the panel for a bigger live view; the toolbars keep showing the
+    // Échantillon and Grossissement a capture goes to, and capturing works
+    // the same. Remembered on this PC.
+    how->addSeparator();
+    QAction* panel = how->addAction(QString());
+    panel->setShortcut(QKeySequence(Qt::Key_F9));
+    panel->setToolTip(tr("Masque ou affiche le panneau TP et Vues, pour agrandir l'image en direct."));
+    const auto showPanel = [dock, panel](bool visible) {
+        dock->setVisible(visible);
+        panel->setText(visible ? MainWindow::tr("Masquer les Vues (F9)") : MainWindow::tr("Afficher les Vues (F9)"));
+    };
+    showPanel(uiSetting(setup_.configPath, kPanelVisibleKey, true).toBool());
+    connect(panel, &QAction::triggered, this, [this, dock, showPanel] {
+        const bool visible = dock->isHidden();
+        showPanel(visible);
+        setUiSetting(setup_.configPath, kPanelVisibleKey, visible);
+    });
 
     modeLabel_ = new QLabel;
     fpsLabel_ = new QLabel;
