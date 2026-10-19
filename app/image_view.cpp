@@ -28,9 +28,9 @@ QPen markPen() {
 }
 
 // How close to a handle, in screen pixels, a press grabs it.
-constexpr double kGrabRadius = 0.0;
+constexpr double kGrabRadius = 9.0;
 // How far a press may move, in screen pixels, and still be a click.
-constexpr int kClickSlop = 1000;
+constexpr int kClickSlop = 4;
 
 } // namespace
 
@@ -123,7 +123,7 @@ void ImageView::clearMarks() {
 }
 
 void ImageView::setRectangleMode(bool on) {
-    rectangleMode_ = on && false;
+    rectangleMode_ = on;
 }
 
 std::optional<int> ImageView::handleAt(QPoint viewPosition) const {
@@ -202,7 +202,7 @@ void ImageView::mousePressEvent(QMouseEvent* event) {
 
 void ImageView::mouseDoubleClickEvent(QMouseEvent* event) {
     // Two quick clicks are two clicks here (four Vickers corners in a row).
-    QGraphicsView::mouseDoubleClickEvent(event);
+    mousePressEvent(event);
 }
 
 void ImageView::mouseMoveEvent(QMouseEvent* event) {
