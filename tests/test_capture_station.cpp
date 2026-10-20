@@ -121,6 +121,42 @@ int main() {
               "a device that refuses settings is reported, not hidden");
     }
 
+    std::cout << "\n== setControls(): exposure and colour temperature changed live (camera setup wizard) ==\n";
+    {
+        auto fake = std::make_unique<FakeCamera>(cv::Mat(60, 80, CV_8UC3, kTint), true, "MJPG");
+        FakeCamera* cam = fake.get();
+        CameraConfig profile = lockedProfile();
+        profile.width = 80;
+        profile.height = 60;
+        CaptureStation station(std::move(fake), profile);
+        check(!throwsWith<std::runtime_error>([&] { station.setControls(10.0, 4500.0); }).empty(),
+              "setControls on a closed camera throws");
+        station.open();
+        cam->calls.clear();
+        ProfileReport report = station.setControls(10.0, 4500.0);
+        check(cam->calls == std::vector<std::string>{"exposure 10", "kelvin 4500"},
+              "the new exposure and colour temperature are set without reopening");
+        check(report.exposureApplied && report.whiteBalanceApplied && report.frameSize == cv::Size(80, 60) &&
+                  report.frameSizeApplied,
+              "the report keeps the mode negotiated at open()");
+        check(station.config().exposureMs == 10.0 && station.config().whiteBalanceKelvin == 4500.0,
+              "the station's profile follows, so a capture records what is set now");
+        cam->calls.clear();
+        station.setControls(std::nullopt, std::nullopt);
+        check(cam->calls == std::vector<std::string>{"auto_exposure", "auto_wb"}, "empty values put the camera on auto");
+        check(!station.config().exposureMs && !station.config().whiteBalanceKelvin, "and the profile says auto");
+    }
+    {
+        CaptureStation station(std::make_unique<FakeCamera>(cv::Mat(60, 80, CV_8UC3, kTint), false), lockedProfile());
+        station.open();
+        const ProfileReport report = station.setControls(5.0, 6000.0);
+        check(!report.exposureApplied && !report.whiteBalanceApplied && !station.profileReport().exposureApplied,
+              "a refused live setting is reported, not hidden");
+        const Vue vue = station.capture(dir / "refused_live.tiff");
+        check(vue.captureInfo() && !vue.captureInfo()->exposureMs && !vue.captureInfo()->whiteBalanceKelvin,
+              "a capture after a refused live setting records it as unknown");
+    }
+
     std::cout << "\n== open(): the negotiated mode is checked against the profile (ADR 0015) ==\n";
     {
         CameraConfig profile = lockedProfile();

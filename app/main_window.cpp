@@ -1,5 +1,7 @@
 #include "main_window.hpp"
 
+#include "camera_setup.hpp"
+#include "camera_setup_dialog.hpp"
 #include "capture_station.hpp"
 #include "fiche.hpp"
 #include "fiche_pdf.hpp"
@@ -180,6 +182,7 @@ Catalog exampleCatalog() {
 MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     : QMainWindow(parent), setup_(std::move(setup)), store_(setup_.vueRoot) {
     thumbnailPool_.setMaxThreadCount(1);  // one thumbnail at a time, in list order
+    cameraSearchPool_.setMaxThreadCount(1);
     // The build in the title bar, so a screenshot from a lab PC says which
     // build it came from.
     const QString version = QCoreApplication::applicationVersion();
@@ -343,6 +346,8 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
 MainWindow::~MainWindow() {
     stopCamera();
+    // A camera search still running posts back to this window.
+    cameraSearchPool_.waitForDone();
     // A thumbnail task still running posts back to this window.
     thumbnailPool_.clear();
     thumbnailPool_.waitForDone();
@@ -350,6 +355,7 @@ MainWindow::~MainWindow() {
 
 void MainWindow::buildMenus() {
     QMenu* poste = menuBar()->addMenu(tr("&Poste"));
+    connect(poste->addAction(tr("Configurer la caméra…")), &QAction::triggered, this, &MainWindow::configureCamera);
     connect(poste->addAction(tr("Mesurer la référence blanche…")), &QAction::triggered, this,
             &MainWindow::measureWhiteReference);
     connect(poste->addAction(tr("Calibrer un grossissement sur la mire…")), &QAction::triggered, this,
@@ -436,35 +442,48 @@ QString MainWindow::grossissement() const {
 
 void MainWindow::startCamera() {
     stopCamera();
+    // findCameras() has the camera: it restarts once the search is done.
+    if (searching_) return;
     const int generation = ++generation_;
+    const CameraConfig camera = trialCamera_ ? *trialCamera_ : setup_.camera;
     preview_->showMessage(tr("Ouverture de la caméra…"));
-    modeLabel_->setText(requestedMode(setup_.camera));
+    if (setupDialog_) setupDialog_->cameraStarting();
+    modeLabel_->setText(requestedMode(camera));
     fpsLabel_->clear();
     cameraWarnings_.clear();
 
     jobs_ = std::make_shared<CameraJobs>();
     thread_ = new QThread(this);
-    auto* worker = new PreviewWorker(setup_.camera, jobs_);
+    auto* worker = new PreviewWorker(camera, jobs_);
     worker->moveToThread(thread_);
     connect(thread_, &QThread::started, worker, &PreviewWorker::run);
     connect(thread_, &QThread::finished, worker, &QObject::deleteLater);
 
     // Queued to this thread. Each lambda checks the generation first: a
     // worker that was stopped may still have signals in the queue.
-    connect(worker, &PreviewWorker::opened, this, [this, generation](const QString& mode, const QStringList& warnings) {
-        if (generation != generation_) return;
-        cameraOpen_ = true;
-        modeLabel_->setText(tr("Caméra : %1").arg(mode));
-        cameraWarnings_ = warnings;
-        refreshCaptureState();
-    });
+    connect(worker, &PreviewWorker::opened, this,
+            [this, generation](const QString& mode, const QStringList& warnings, const ProfileReport& report) {
+                if (generation != generation_) return;
+                cameraOpen_ = true;
+                report_ = report;
+                modeLabel_->setText(tr("Caméra : %1").arg(mode));
+                cameraWarnings_ = warnings;
+                refreshCaptureState();
+                if (setupDialog_) setupDialog_->cameraOpened(report);
+                if (calibrateWhenOpen_ && !setupDialog_) {
+                    calibrateWhenOpen_ = false;
+                    QTimer::singleShot(0, this, &MainWindow::calibrateGrossissement);
+                }
+            });
     connect(worker, &PreviewWorker::failed, this, [this, generation](const QString& message) {
         if (generation != generation_) return;
         cameraOpen_ = false;
         busy_ = false;
+        calibrateWhenOpen_ = false;
         preview_->showMessage(tr("Caméra indisponible\n\n%1\n\nFermez MotiConnect ou tout autre programme qui "
                                  "utilise la caméra, puis cliquez sur « Reconnecter la caméra ».")
                                   .arg(message));
+        if (setupDialog_) setupDialog_->cameraFailed(message);
         fpsLabel_->clear();
         refreshCaptureState();
     });
@@ -473,7 +492,12 @@ void MainWindow::startCamera() {
             [this, generation, pending = worker->framePending()](const QImage& frame, const QSize& fullSize) {
                 pending->store(false);
                 if (generation != generation_) return;
-                preview_->setFrame(frame);
+                // Only one view paints: the wizard's while it is open.
+                if (setupDialog_) {
+                    setupDialog_->setFrame(frame);
+                } else {
+                    preview_->setFrame(frame);
+                }
                 if (fullSize != frameSize_) {
                     frameSize_ = fullSize;
                     refreshCaptureState();
@@ -482,6 +506,7 @@ void MainWindow::startCamera() {
     connect(worker, &PreviewWorker::fpsMeasured, this, [this, generation](double fps) {
         if (generation != generation_) return;
         fpsLabel_->setText(tr("%1 images/s").arg(fps, 0, 'f', 1));
+        if (setupDialog_) setupDialog_->setFps(fps);
     });
     connect(worker, &PreviewWorker::jobFailed, this, [this](const QString& message) {
         QMessageBox::warning(this, tr("Erreur de la caméra"), message);
@@ -506,6 +531,7 @@ void MainWindow::stopCamera() {
     cameraOpen_ = false;
     busy_ = false;
     frameSize_ = QSize();
+    report_ = ProfileReport();
 }
 
 void MainWindow::refreshBanner() {
@@ -937,6 +963,130 @@ void MainWindow::requestStill(QPointer<MireDialog> dialog) {
                 } else {
                     dialog->stillFailed(error);
                 }
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void MainWindow::configureCamera() {
+    if (setupDialog_) return;
+    // From the camera running now — this run's --device or --api included —
+    // unless it is replaying image files: then from the saved profile, or
+    // the A5's for a workstation set up without a camera.
+    CameraConfig start = setup_.camera.backend == "opencv" ? setup_.camera : setup_.config.camera;
+    if (start.backend != "opencv") {
+        start = moticamA5Profile();
+        start.whiteReference = setup_.config.camera.whiteReference;
+    }
+    CameraSetupDialog dialog(setup_.config, start, platformCaptureApis(), this);
+    connect(&dialog, &CameraSetupDialog::searchRequested, this, &MainWindow::searchCameras);
+    connect(&dialog, &CameraSetupDialog::profileRequested, this, [this](const CameraConfig& profile) {
+        trialCamera_ = profile;
+        startCamera();
+    });
+    connect(&dialog, &CameraSetupDialog::controlsRequested, this, &MainWindow::tryCameraControls);
+    connect(&dialog, &CameraSetupDialog::whiteReferenceRequested, this, &MainWindow::measureSetupWhiteReference);
+    setupDialog_ = &dialog;
+    trialCamera_ = start;
+    if (start.toJson() != setup_.camera.toJson()) {
+        startCamera();
+    } else if (cameraOpen_) {
+        dialog.cameraOpened(report_);
+    }
+
+    const bool accepted = dialog.exec() == QDialog::Accepted;
+    const CameraSetupReview review = dialog.review();
+    const bool recalibrate = dialog.recalibrateRequested();
+    setupDialog_ = nullptr;
+    trialCamera_.reset();
+    if (accepted && review.changed) {
+        // What the camera granted, never what it refused as if granted.
+        setup_.config.camera = review.profile;
+        setup_.camera = review.profile;
+        if (saveConfig()) statusBar()->showMessage(tr("Profil caméra enregistré."), 10000);
+    }
+    // ADR 0015: the mode the Calibrations no longer fit; once the camera
+    // runs it again, the mire dialog opens.
+    calibrateWhenOpen_ = accepted && recalibrate;
+    startCamera();  // the saved profile again, or the new one
+}
+
+void MainWindow::searchCameras() {
+    if (searching_) return;
+    stopCamera();
+    searching_ = true;
+    preview_->showMessage(tr("Recherche des caméras…"));
+    if (setupDialog_) setupDialog_->showMessage(tr("Recherche des caméras…"));
+    // ~MainWindow waits for the pool, so `this` outlives the task.
+    cameraSearchPool_.start([this] {
+        std::vector<FoundCamera> found;
+        QString error;
+        try {
+            found = findCameras(platformCaptureApis());
+        } catch (const std::exception& e) {
+            error = QString::fromStdString(e.what());
+        }
+        QMetaObject::invokeMethod(
+            this,
+            [this, found, error] {
+                searching_ = false;
+                if (setupDialog_) setupDialog_->camerasFound(found, error);
+                startCamera();
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void MainWindow::tryCameraControls(const CameraConfig& profile) {
+    trialCamera_ = profile;  // a restart keeps them
+    if (!cameraOpen_ || !jobs_) {
+        startCamera();
+        return;
+    }
+    const int generation = generation_;
+    const std::optional<double> exposureMs = profile.exposureMs;
+    const std::optional<double> kelvin = profile.whiteBalanceKelvin;
+    jobs_->post([this, generation, exposureMs, kelvin](CaptureStation& station) {
+        const ProfileReport report = station.setControls(exposureMs, kelvin);
+        QMetaObject::invokeMethod(
+            this,
+            [this, generation, report] {
+                if (generation != generation_) return;  // that camera is gone: the new one reports at open
+                report_ = report;
+                if (setupDialog_) setupDialog_->controlsApplied(report);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void MainWindow::measureSetupWhiteReference() {
+    if (!cameraOpen_ || !jobs_) {
+        if (setupDialog_) setupDialog_->whiteReferenceFailed(tr("La caméra n'est pas disponible."));
+        return;
+    }
+    const int generation = generation_;
+    jobs_->post([this, generation](CaptureStation& station) {
+        std::optional<WhiteBalance> gains;
+        QString error;
+        try {
+            gains = station.calibrateWhiteReference();  // applied to the preview straight away
+        } catch (const std::exception& e) {
+            error = QString::fromStdString(e.what());
+        }
+        QMetaObject::invokeMethod(
+            this,
+            [this, generation, gains, error] {
+                if (!setupDialog_) return;
+                if (generation != generation_ && error.isEmpty()) {
+                    setupDialog_->whiteReferenceFailed(tr("La caméra a redémarré pendant la mesure : mesurez à nouveau."));
+                    return;
+                }
+                if (!gains) {
+                    setupDialog_->whiteReferenceFailed(error);
+                    return;
+                }
+                if (trialCamera_) trialCamera_->whiteReference = *gains;  // a restart keeps them
+                setupDialog_->whiteReferenceMeasured(*gains);
             },
             Qt::QueuedConnection);
     });

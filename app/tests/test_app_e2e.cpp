@@ -20,7 +20,9 @@
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
 
+#include <QAction>
 #include <QApplication>
+#include <QDialog>
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
@@ -71,6 +73,7 @@ private slots:
     void previewRunsOnTheReplayCamera();
     void captureFilesACalibratedVue();
     void openTheVueMeasureAndAnalyse();
+    void cameraSetupCancelledKeepsTheSavedProfile();
     void cleanupTestCase();
 
 private:
@@ -201,6 +204,47 @@ void AppE2E::openTheVueMeasureAndAnalyse() {
     QVERIFY2(qAbs(length.captured(1).toDouble() - 100.0) < 1.0, qPrintable(result->text()));
 
     vueWindow->close();
+    QVERIFY2(dialogs_.isEmpty(), qPrintable(dialogs_.join(QLatin1Char('\n'))));
+}
+
+// Poste › Configurer la caméra (#83) on a PC with no camera: the wizard
+// searches (the replay camera is closed meanwhile), tries the A5 profile,
+// which fails here, and Annuler puts the replay camera back, the saved
+// profile untouched.
+void AppE2E::cameraSetupCancelledKeepsTheSavedProfile() {
+    QAction* configure = nullptr;
+    for (QAction* action : window_->findChildren<QAction*>()) {
+        if (action->text() == QStringLiteral("Configurer la caméra…")) configure = action;
+    }
+    QVERIFY(configure != nullptr);
+    // The wizard runs modally, in an event loop of its own that this test
+    // can't step past: a timer inside that loop waits for the search to end,
+    // then cancels, as dialogWatch_ does with a message box.
+    bool searched = false;
+    bool saveEnabled = true;
+    QTimer drive;
+    connect(&drive, &QTimer::timeout, this, [&] {
+        auto* wizard = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        if (wizard == nullptr || wizard->objectName() != QStringLiteral("cameraSetupDialog")) return;
+        auto* status = wizard->findChild<QLabel*>(QStringLiteral("searchStatus"));
+        if (status == nullptr || status->text().startsWith(QStringLiteral("Recherche"))) return;
+        auto* save = wizard->findChild<QPushButton*>(QStringLiteral("saveButton"));
+        saveEnabled = save != nullptr && save->isEnabled();
+        searched = true;
+        drive.stop();
+        wizard->reject();
+    });
+    drive.start(100);
+    QTimer::singleShot(0, configure, &QAction::trigger);
+    QTRY_VERIFY_WITH_TIMEOUT(searched, 60000);
+    QVERIFY2(!saveEnabled, "nothing to save while the camera doesn't open");
+
+    auto* capture = window_->findChild<QPushButton*>(QStringLiteral("captureButton"));
+    QTRY_VERIFY_WITH_TIMEOUT(QApplication::activeModalWidget() == nullptr, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(capture->isEnabled(), 15000);  // the replay camera runs again
+    const LoadedWorkstationConfig saved = loadWorkstationConfig(root_ / "config" / "workstation.json");
+    QVERIFY(saved.error.empty());
+    QCOMPARE(QString::fromStdString(saved.config.camera.backend), QStringLiteral("file"));
     QVERIFY2(dialogs_.isEmpty(), qPrintable(dialogs_.join(QLatin1Char('\n'))));
 }
 

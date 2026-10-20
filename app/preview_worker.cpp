@@ -65,7 +65,9 @@ QStringList profileWarnings(const CameraConfig& config, const ProfileReport& rep
 } // namespace
 
 PreviewWorker::PreviewWorker(CameraConfig config, std::shared_ptr<CameraJobs> jobs)
-    : config_(std::move(config)), jobs_(std::move(jobs)) {}
+    : config_(std::move(config)), jobs_(std::move(jobs)) {
+    qRegisterMetaType<msapp::ProfileReport>();
+}
 
 void PreviewWorker::run() {
     QThread* thread = QThread::currentThread();
@@ -75,7 +77,7 @@ void PreviewWorker::run() {
         // Image files have no exposure or frame mode to grant: no warnings.
         const bool replay = config_.backend == "file";
         emit opened(replay ? QStringLiteral("relecture d'images") : describeMode(report),
-                    replay ? QStringList() : profileWarnings(config_, report));
+                    replay ? QStringList() : profileWarnings(config_, report), report);
 
         // File replay grabs instantly: pace it like a camera instead of
         // spinning a core.

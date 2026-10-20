@@ -1,8 +1,10 @@
 #pragma once
 
 #include "camera_factory.hpp"
+#include "capture_station.hpp"
 
 #include <QImage>
+#include <QMetaType>
 #include <QObject>
 #include <QSize>
 #include <QString>
@@ -16,8 +18,6 @@
 #include <vector>
 
 namespace msapp {
-
-class CaptureStation;
 
 // Work for the camera thread — a capture, a White reference, a still for
 // the mire — run with the open CaptureStation between two preview frames:
@@ -74,8 +74,10 @@ public slots:
 
 signals:
     // The camera is open. `mode` is what it negotiated, e.g. "3840x2160
-    // MJPG"; `warnings` names every profile setting it did not grant.
-    void opened(const QString& mode, const QStringList& warnings);
+    // MJPG"; `warnings` names every profile setting it did not grant, and
+    // `report` is what CaptureStation::open() said, for the camera setup
+    // wizard.
+    void opened(const QString& mode, const QStringList& warnings, const msapp::ProfileReport& report);
     // It couldn't open, or stopped delivering frames. The worker is done.
     void failed(const QString& message);
     // A white-balanced frame shrunk to at most 1920x1080 for display, and
@@ -93,3 +95,6 @@ private:
 };
 
 } // namespace msapp
+
+// opened() crosses from the camera thread to the window's.
+Q_DECLARE_METATYPE(msapp::ProfileReport)

@@ -183,7 +183,20 @@ previous version.
   mm). An
   Échantillon without a Vue principale gets an empty frame, and the app
   lists them before writing. Then open the PDF to print it (ADR 0010).
-- **Poste menu (setup).** *Mesurer la référence blanche* (blank field, lamp
+- **Poste menu (setup).** *Configurer la caméra* sets up the Camera profile
+  without editing a file (#83), the live preview beside every step: the
+  cameras found (index, capture API, default mode, like `camera_probe`),
+  the mode (frame size, pixel format, DirectShow or Media Foundation) and
+  what the camera actually granted, exposure (auto or fixed, with the
+  measured frame rate), colour temperature (auto or locked), the White
+  reference, then a summary before saving. A mode the camera falls back
+  from is saved as the one it delivers; a refused setting is named, never
+  saved as granted. It warns which Calibrations stop applying in the new
+  mode and offers to calibrate on the mire right after (ADR 0015), and says
+  when a new exposure, colour temperature or camera makes the White
+  reference stale (ADR 0014). *Rétablir le profil Moticam A5* restores
+  `moticamA5Profile()`, keeping the White reference.
+  *Mesurer la référence blanche* (blank field, lamp
   on), *Calibrer un grossissement sur la mire* (click a line of the mire
   and the line N periods further — a period is the gap between two
   neighbouring lines, 20 µm on the lab's mire, set in the dialog for
@@ -276,9 +289,16 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
 
 1. **Lab session 2**, on the lab PC with the latest bundle (MotiConnect
    closed):
-   - In that PC's existing `workstation.json`
-     (`%LOCALAPPDATA%\microscope-app\`), set `"exposure_ms": 7.8125`: a
-     file saved before the exposure was fixed keeps `null` (camera auto).
+   - Set up the camera with *Poste › Configurer la caméra*
+     ([#83](https://github.com/FB-UNIV/microscope-app/issues/83)): the A5
+     is listed (DirectShow and Media Foundation), 3840×2160 MJPG is
+     granted at about 15 fps, exposure and colour temperature change the
+     preview live, a mode change names the Calibrations it invalidates,
+     and after *Enregistrer* the preview restarts on the saved profile with
+     no banner. Try 1920×1080 too, then *Rétablir le profil Moticam A5*.
+     This also replaces editing `workstation.json` by hand: a file saved
+     before the exposure was fixed keeps `null` (camera auto), and the
+     wizard's exposure step (or the A5 button) sets 7.8 ms.
      Before changing it, one check for
      [#14](https://github.com/FB-UNIV/microscope-app/issues/14): after a
      run at a manual exposure (`camera_probe --exposure -9`), the app with

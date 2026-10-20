@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capture_station.hpp"
 #include "catalog.hpp"
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
@@ -27,6 +28,7 @@ class QThread;
 namespace msapp {
 
 class CameraJobs;
+class CameraSetupDialog;
 class LocationPicker;
 class MireDialog;
 class PreviewWidget;
@@ -53,9 +55,8 @@ struct AppSetup {
 // as is a Vue captured under the wrong Échantillon — or deleted, to the
 // Corbeille of the Vue folder, where it can still be recovered. F9 hides
 // the panel for a bigger live view (remembered in ui.ini beside
-// workstation.json). The Poste menu measures the White reference (ADR
-// 0014) and calibrates a
-// Grossissement on the mire.
+// workstation.json). The Poste menu sets up the camera (#83), measures the
+// White reference (ADR 0014) and calibrates a Grossissement on the mire.
 //
 // The camera lives on a worker thread (PreviewWorker); a capture, a White
 // reference or a still for the mire is a CameraJob run there between two
@@ -69,7 +70,8 @@ public:
 
 private:
     void buildMenus();
-    // (Re)opens the camera on a fresh worker thread.
+    // (Re)opens the camera on a fresh worker thread, with the profile the
+    // camera setup wizard is trying, if open, else setup_.camera.
     void startCamera();
     // Asks the worker to stop and waits for it to close the camera.
     void stopCamera();
@@ -96,6 +98,12 @@ private:
     void generateFiche();
     void measureWhiteReference();
     void calibrateGrossissement();
+    // Poste › Configurer la caméra (#83), and its requests: the wizard
+    // tries each profile on this window's camera thread.
+    void configureCamera();
+    void searchCameras();
+    void tryCameraControls(const CameraConfig& profile);
+    void measureSetupWhiteReference();
     void requestStill(QPointer<MireDialog> dialog);
     void openCatalogFile();
     void reloadCatalog();
@@ -138,6 +146,17 @@ private:
     bool cameraOpen_ = false;
     bool busy_ = false;     // a capture is running on the camera thread
     QSize frameSize_;       // the latest frame as grabbed, full size
+    ProfileReport report_;  // what the camera granted at its last open
+
+    // The camera setup wizard while it is open: it gets the frames, and the
+    // camera runs the profile it is trying.
+    QPointer<CameraSetupDialog> setupDialog_;
+    std::optional<CameraConfig> trialCamera_;
+    // findCameras() runs here with the camera closed; startCamera() waits.
+    QThreadPool cameraSearchPool_;
+    bool searching_ = false;
+    // Saved a camera mode the Calibrations don't fit: calibrate once open.
+    bool calibrateWhenOpen_ = false;
 
     // The Vue list's thumbnails by image path, kept across refreshes: a Vue
     // never changes under its path (ADR 0004), and reading a 4K TIFF takes

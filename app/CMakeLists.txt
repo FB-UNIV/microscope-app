@@ -16,6 +16,8 @@ qt_standard_project_setup()
 qt_add_library(microscope_app_ui STATIC
     main_window.cpp
     main_window.hpp
+    camera_setup_dialog.cpp
+    camera_setup_dialog.hpp
     location_picker.cpp
     location_picker.hpp
     mire_dialog.cpp
@@ -69,6 +71,13 @@ target_link_libraries(test_image_view PRIVATE Qt6::Widgets Qt6::Test)
 add_test(NAME test_image_view COMMAND test_image_view)
 set_tests_properties(test_image_view PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
 
+# Widget tests of the camera setup wizard (#83): the test answers its
+# requests as MainWindow does with a real camera.
+qt_add_executable(test_camera_setup_dialog tests/test_camera_setup_dialog.cpp)
+target_link_libraries(test_camera_setup_dialog PRIVATE microscope_app_ui Qt6::Test)
+add_test(NAME test_camera_setup_dialog COMMAND test_camera_setup_dialog)
+set_tests_properties(test_camera_setup_dialog PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
+
 # GUI end-to-end: drives the real windows on the replay camera — capture,
 # open the Vue, measure, phase analysis — offscreen. `ctest -L e2e` runs it
 # with the core's end-to-end test.
@@ -79,5 +88,5 @@ add_test(NAME test_app_e2e COMMAND test_app_e2e)
 set_tests_properties(test_app_e2e PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120 LABELS e2e)
 
 # Every test that starts Qt: the sanitizer job runs them without leak checks.
-set_property(TEST microscope_app_launch microscope_app_version test_image_view test_app_e2e
+set_property(TEST microscope_app_launch microscope_app_version test_image_view test_camera_setup_dialog test_app_e2e
              APPEND PROPERTY LABELS gui)
