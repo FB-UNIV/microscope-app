@@ -122,7 +122,7 @@ int main() {
         CameraConfig motic;
         motic.backend = "motic";
         const std::string moticMessage = throwsWith<std::runtime_error>([&] { makeCamera(motic); });
-        check(moticMessage.find("\"opencv\"") != std::string::npos && moticMessage.find("ADR 0013") != std::string::npos,
+        check(moticMessage.find("\"opencv\"") != std::string::npos && moticMessage.find("UVC") != std::string::npos,
               "'motic' explains the A5 needs backend \"opencv\" (ADR 0013)");
 
         CameraConfig bogus;

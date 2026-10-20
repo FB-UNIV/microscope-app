@@ -2,6 +2,7 @@
 #include "catalog.hpp"
 #include "main_window.hpp"
 #include "qt_image.hpp"
+#include "theme.hpp"
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
 
@@ -52,7 +53,10 @@ msapp::AppSetup loadSetup() {
     } else if (!setup.configPath.empty()) {
         setup.vueRoot = msapp::defaultVueRoot();
     } else {
-        setup.vueRoot = msapp::toPath(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)) / "vues";
+        // The folder the app had before it was named Métallo, so the Vues
+        // filed there are still found.
+        setup.vueRoot = msapp::toPath(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)) /
+                        "Microscope Capture" / "vues";
     }
     return setup;
 }
@@ -68,8 +72,13 @@ int main(int argc, char** argv) {
     cv::setNumThreads(1);
 
     QApplication app(argc, argv);
-    QApplication::setApplicationName(QStringLiteral("Microscope Capture"));
+    // Métallo (ADR 0023). The plain-ASCII name is what --version prints,
+    // where a Windows console would garble the é; the title bar shows the
+    // display name.
+    QApplication::setApplicationName(QStringLiteral("Metallo"));
+    QApplication::setApplicationDisplayName(QStringLiteral("Métallo"));
     QApplication::setApplicationVersion(QString::fromUtf8(msapp::kBuildVersion));
+    msapp::theme::apply(app);
 
     QCommandLineParser parser;
     parser.addHelpOption();

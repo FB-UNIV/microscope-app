@@ -80,7 +80,7 @@ QStringList writeFichePdf(const VueStore& store, const std::string& department, 
     writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Millimeter);
     writer.setResolution(kDotsPerInch);
     writer.setTitle(QString::fromStdString(tp.name));
-    writer.setCreator(QStringLiteral("Microscope Capture"));
+    writer.setCreator(QStringLiteral("Métallo"));
 
     QPainter painter;
     if (!painter.begin(&writer)) {

@@ -1,4 +1,6 @@
-# Microscope Capture App
+# <img src="app/resources/metallo-64.png" width="40" height="40" alt="" align="top"> Métallo
+
+The microscope capture app of the metallography lab ([ADR 0023](docs/adr/0023-metallo-neutral-dark-theme.md)).
 
 [![CI](https://github.com/FB-UNIV/microscope-app/actions/workflows/ci.yml/badge.svg)](https://github.com/FB-UNIV/microscope-app/actions/workflows/ci.yml)
 
@@ -113,7 +115,7 @@ stays put. No GitHub account is needed to download while the repo is public.
    folders beside it: nothing to install, no admin rights. No microscope at
    hand: `.\microscope_app.exe --replay photo.png` (see *Demo PC* below).
 
-The title bar names the build, as the zip does: `Microscope Capture —
+The title bar names the build, as the zip does: `Métallo —
 v0.1.0-3-gabc1234` is 3 commits after v0.1.0, at commit `abc1234` (just
 `abc1234` before the first version). `microscope_app.exe --version` shows it
 too, in a message box (`.\microscope_app.exe --version | Out-String` prints
@@ -140,8 +142,11 @@ previous version.
   which. It also names every camera setting not granted (exposure, colour
   temperature, frame size, pixel format); a camera held by MotiConnect gets
   a message and *Reconnecter la caméra* (F5).
-- **Vues.** The right panel lists the Échantillon's Vues, newest first;
-  *★ Choisir comme Vue principale* flags the one for the Fiche.
+- **Vues.** The right panel lists the Échantillon's Vues, newest first,
+  each with its thumbnail and capture time; a new capture is picked in it.
+  *★ Principale* (or right-click › *★ Choisir comme Vue principale*) flags
+  the one for the Fiche; the Vue buttons wait for a Vue to be picked.
+  *Aide › Raccourcis clavier* lists the keys.
   *Masquer les Vues* (F9) hides the panel for a bigger live view; the
   toolbars still show the Échantillon and Grossissement, capture works the
   same, and the choice is remembered in `ui.ini` beside `workstation.json`.
@@ -163,14 +168,14 @@ previous version.
   the app says so instead of giving a %. Measuring is refused on an
   uncalibrated Vue. *Exporter une copie* writes the Vue with its
   Treatments as PNG, TIFF or JPEG; the photo and sidecar are untouched.
-- **Filing Vues.** *Classer la Vue…* moves the selected Vue, with its
+- **Filing Vues.** *Classer…* (right-click: *Classer la Vue…*) moves the selected Vue, with its
   Treatments, into the Échantillon picked in a small *Département › TP ›
   Échantillon* dialog. Once a catalog exists, Vues captured before it
   (Unsorted, ADR 0008) are listed with *Vues non classées (N)* above the
   list, until every one is filed. A Vue open in its own window must be
   closed first.
-- **Deleting Vues.** *Supprimer la Vue…* (button, right-click, or Suppr in
-  the list; also in the Vue's own window) asks first, then moves the Vue
+- **Deleting Vues.** *Supprimer…* (button; *Supprimer la Vue…* on
+  right-click, Suppr in the list, and in the Vue's own window) asks first, then moves the Vue
   with its Treatments to `Corbeille/` in the Vue folder, under the same
   *Département / TP / Échantillon* folders (`VueStore::deleteVue`). Nothing
   is erased: move its files back to recover it. A deleted Vue principale
@@ -207,7 +212,7 @@ previous version.
   within 0.25 %. Only the distance across the lines counts, in the
   direction found in the image, so the clicks need not be level. One
   objective is enough, the others are derived from it by their
-  magnification and the toolbar shows "déduit de x5", ADR 0020), *Modifier /
+  magnification and the toolbar's tooltip says "Déduit de x5", ADR 0020), *Modifier /
   Recharger le catalogue de TP*, *Ouvrir le dossier des Vues*. Settings are
   saved to `workstation.json`.
 - **Demo PC.** These options override the config for one run without

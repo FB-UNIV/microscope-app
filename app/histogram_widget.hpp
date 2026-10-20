@@ -8,7 +8,7 @@
 namespace msapp {
 
 // The Phase analysis histogram (issue #25): the legacy edge-weighted grey
-// histogram (AutoThreshold::histogram), with the Seuil as a red line and
+// histogram (AutoThreshold::histogram), with the Seuil as a copper line and
 // its tolerance band shaded — the pixels in it count half to each phase.
 class HistogramWidget : public QWidget {
     Q_OBJECT

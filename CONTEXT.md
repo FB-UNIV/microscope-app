@@ -1,4 +1,4 @@
-# Microscope Capture App
+# Métallo, the microscope capture app
 
 Replacement for the legacy Matrox-based metallography imaging tool. Captures photos of metal samples from a Moticam, applies the levels/scale treatments teachers use to document them, and runs the two lab measurements the legacy app provided: Phase analysis and Dureté Vickers.
 

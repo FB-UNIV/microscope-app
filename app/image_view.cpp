@@ -1,5 +1,7 @@
 #include "image_view.hpp"
 
+#include "theme.hpp"
+
 #include <QBrush>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsLineItem>
@@ -41,7 +43,8 @@ ImageView::ImageView(QWidget* parent) : QGraphicsView(parent), scene_(new QGraph
     setDragMode(QGraphicsView::NoDrag);
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setRenderHint(QPainter::SmoothPixmapTransform);
-    setBackgroundBrush(Qt::black);
+    setBackgroundBrush(theme::canvas);
+    setFrameShape(QFrame::NoFrame);
     viewport()->setMouseTracking(true);  // the cursor changes over a handle
     viewport()->setCursor(Qt::CrossCursor);
     setFocusPolicy(Qt::StrongFocus);  // a click gives it the keyboard, for shortcuts on the image
@@ -59,6 +62,7 @@ void ImageView::setImage(const QImage& image) {
         clearMarks();
         scene_->setSceneRect(image_->boundingRect());
         fitInView(image_, Qt::KeepAspectRatio);
+        fittedTransform_ = transform();
     }
 }
 
@@ -153,6 +157,22 @@ QPointF ImageView::imagePointAt(QPoint viewPosition) const {
 void ImageView::updateCursor(QPoint viewPosition) {
     const Qt::CursorShape shape = handleAt(viewPosition) ? Qt::SizeAllCursor : Qt::CrossCursor;
     if (viewport()->cursor().shape() != shape) viewport()->setCursor(shape);
+}
+
+void ImageView::drawForeground(QPainter* painter, const QRectF& /*rect*/) {
+    if (image_ == nullptr) return;
+    QPen edge(QColor(255, 255, 255, 20));
+    edge.setCosmetic(true);  // one screen pixel at any zoom
+    painter->setPen(edge);
+    painter->setBrush(Qt::NoBrush);
+    painter->drawRect(image_->boundingRect());
+}
+
+void ImageView::resizeEvent(QResizeEvent* event) {
+    QGraphicsView::resizeEvent(event);
+    if (image_ == nullptr || transform() != fittedTransform_) return;
+    fitInView(image_, Qt::KeepAspectRatio);
+    fittedTransform_ = transform();
 }
 
 void ImageView::wheelEvent(QWheelEvent* event) {

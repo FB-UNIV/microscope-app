@@ -31,7 +31,7 @@ std::optional<std::string> invalidCalibration(const Calibration& c) {
     // Without a frame size it would hold for any camera mode (ADR 0015).
     if (!c.hasFrameSize()) {
         return "Calibration " + c.grossissement + " records no frame size — recalibrate " + c.grossissement +
-               " so the size it is measured at is kept (ADR 0015)";
+               " so the size it is measured at is kept";
     }
     return std::nullopt;
 }

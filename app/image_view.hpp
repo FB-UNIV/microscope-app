@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <QString>
+#include <QTransform>
 
 #include <optional>
 #include <vector>
@@ -60,6 +61,10 @@ signals:
     void rectangleDragged(QRectF imageRect);
 
 protected:
+    // A faint neutral edge around the photo, over the canvas.
+    void drawForeground(QPainter* painter, const QRectF& rect) override;
+    // Keeps the whole photo in view as the window resizes, until zoomed.
+    void resizeEvent(QResizeEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
@@ -83,6 +88,9 @@ private:
     std::vector<QPointF> handles_;
     std::vector<QGraphicsEllipseItem*> handleItems_;
     bool rectangleMode_ = false;
+    // The transform the photo was last fitted with; any other means it was
+    // zoomed since, and a resize leaves it alone.
+    QTransform fittedTransform_;
 
     Gesture gesture_ = Gesture::None;
     Qt::MouseButton gestureButton_ = Qt::NoButton;
