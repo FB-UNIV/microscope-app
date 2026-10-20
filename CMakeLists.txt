@@ -57,6 +57,7 @@ add_library(microscope_core
     src/camera_factory.cpp
     src/white_reference.cpp
     src/capture_station.cpp
+    src/camera_setup.cpp
     src/safe_write.cpp
     src/workstation_config.cpp
     src/vue_store.cpp
@@ -82,7 +83,7 @@ set(MSAPP_LEGACY_DATA_DIR "" CACHE PATH "Folder with legacy Metal view TIFFs (op
 
 enable_testing()
 foreach(test_name test_pipeline test_measurement test_phase_analysis test_vickers test_camera
-                  test_white_reference test_capture_station test_treatment_registration
+                  test_white_reference test_capture_station test_camera_setup test_treatment_registration
                   test_workstation_config test_vue_store test_catalog test_mire_calibration
                   test_vue_editing test_fiche test_measurement_marks test_e2e_lab_session)
     add_executable(${test_name} tests/${test_name}.cpp)

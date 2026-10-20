@@ -96,7 +96,8 @@ polished ferrite–pearlite steel at x5 plus one run at x10:
 | Dust | the x5 frame shows blurred dark blobs, out of focus while the sample is sharp: dust on the optics. Phase analysis counts them as dark phase (#55). |
 
 A `workstation.json` saved before exposure was fixed holds `"exposure_ms": null` (camera
-auto) and keeps it: set it to `7.8125` by hand on that PC to take the measured value.
+auto) and keeps it: set the exposure to 7.8 ms in *Poste › Configurer la caméra* (or
+*Rétablir le profil Moticam A5* there) to take the measured value.
 
 ### Round 2 (probe v2) — with a real sample
 

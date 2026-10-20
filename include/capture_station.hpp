@@ -46,6 +46,13 @@ public:
     void close();
     bool isOpen() const;
 
+    // Applies a new exposure and colour temperature to the open camera
+    // (empty = the camera's auto), as open() does, without reopening it:
+    // the camera setup wizard shows each setting's effect live. Returns the
+    // updated profileReport(); the mode is left as negotiated at open().
+    // Throws std::runtime_error when the camera is not open.
+    ProfileReport setControls(std::optional<double> exposureMs, std::optional<double> whiteBalanceKelvin);
+
     // White-balanced frame: exactly what a capture would store.
     cv::Mat grabPreview();
 
@@ -97,6 +104,9 @@ public:
     const ProfileReport& profileReport() const { return report_; }
 
 private:
+    // Sets both controls from config_, even "auto", into report_.
+    void applyControls();
+
     std::unique_ptr<ICamera> camera_;
     CameraConfig config_;
     ProfileReport report_;

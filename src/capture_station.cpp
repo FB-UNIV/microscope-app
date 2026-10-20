@@ -22,24 +22,37 @@ ProfileReport CaptureStation::open() {
     // A stream that just started may send empty frames: warm-up allowance.
     liveFrameSeen_ = false;
     failedLiveGrabs_ = 0;
-    // Always set both, even "auto": the camera otherwise keeps whatever the
-    // last program (or the last session) left behind.
-    ProfileReport report;
-    report.exposureApplied =
-        config_.exposureMs ? camera_->setExposureMs(*config_.exposureMs) : camera_->enableAutoExposure();
-    report.whiteBalanceApplied = config_.whiteBalanceKelvin
-                                     ? camera_->setWhiteBalanceKelvin(*config_.whiteBalanceKelvin)
-                                     : camera_->enableAutoWhiteBalance();
+    report_ = ProfileReport();
+    applyControls();
     // Read the mode back instead of trusting the request: drivers fall back
     // to another mode silently, which would invalidate every Calibration
     // measured in the profile's mode (ADR 0015).
-    report.frameSize = camera_->frameSize();
-    report.pixelFormat = camera_->pixelFormat();
+    report_.frameSize = camera_->frameSize();
+    report_.pixelFormat = camera_->pixelFormat();
     const cv::Size requested(config_.width, config_.height);
-    report.frameSizeApplied = requested.empty() || report.frameSize == requested;
-    report.pixelFormatApplied = config_.pixelFormat.empty() || report.pixelFormat == config_.pixelFormat;
-    report_ = report;
-    return report;
+    report_.frameSizeApplied = requested.empty() || report_.frameSize == requested;
+    report_.pixelFormatApplied = config_.pixelFormat.empty() || report_.pixelFormat == config_.pixelFormat;
+    return report_;
+}
+
+ProfileReport CaptureStation::setControls(std::optional<double> exposureMs, std::optional<double> whiteBalanceKelvin) {
+    if (!camera_->isOpen()) {
+        throw std::runtime_error("CaptureStation::setControls: the camera is not open");
+    }
+    config_.exposureMs = exposureMs;
+    config_.whiteBalanceKelvin = whiteBalanceKelvin;
+    applyControls();
+    return report_;
+}
+
+void CaptureStation::applyControls() {
+    // Always set both, even "auto": the camera otherwise keeps whatever the
+    // last program (or the last session) left behind.
+    report_.exposureApplied =
+        config_.exposureMs ? camera_->setExposureMs(*config_.exposureMs) : camera_->enableAutoExposure();
+    report_.whiteBalanceApplied = config_.whiteBalanceKelvin
+                                      ? camera_->setWhiteBalanceKelvin(*config_.whiteBalanceKelvin)
+                                      : camera_->enableAutoWhiteBalance();
 }
 
 void CaptureStation::close() {
