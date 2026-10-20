@@ -54,6 +54,7 @@ add_library(microscope_core
     src/measurement_marks.cpp
     src/file_replay_camera.cpp
     src/opencv_camera.cpp
+    src/jpeg_frame.cpp
     src/camera_factory.cpp
     src/white_reference.cpp
     src/capture_station.cpp
