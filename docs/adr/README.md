@@ -29,3 +29,4 @@ supersedes it, and the later ADR links back. Domain terms are in
 | [0020](0020-calibrate-one-objective-derive-the-others.md) | Calibrate one objective on the mire; the others are derived from it | |
 | [0021](0021-phase-analysis-at-legacy-scale.md) | Phase analysis runs at the legacy camera's scale; a missing Seuil is reported | |
 | [0022](0022-fiche-prints-the-original-with-its-echelle.md) | A Fiche prints each Vue principale's original photo with only its Échelle | |
+| [0023](0023-metallo-neutral-dark-theme.md) | The app is Métallo, in neutral greys with one copper accent | |

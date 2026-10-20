@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Métallo: an eyepiece's field of view on an etched steel — ferrite
+       grains lit copper, one dark pearlite grain with its lamellae. The
+       source of metallo-*.png and metallo.ico (32 px and up; metallo-small.svg
+       draws the smaller sizes). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#333335"/>
+      <stop offset="1" stop-color="#19191b"/>
+    </linearGradient>
+    <radialGradient id="field" cx="0.40" cy="0.36" r="0.78">
+      <stop offset="0" stop-color="#f3bf98"/>
+      <stop offset="0.5" stop-color="#d48a5a"/>
+      <stop offset="1" stop-color="#8c4a26"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.72" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.45"/>
+    </radialGradient>
+    <clipPath id="fieldClip">
+      <circle cx="128" cy="128" r="80"/>
+    </clipPath>
+    <clipPath id="pearliteClip">
+      <path d="M150 84 L170 22 L250 22 L250 104 L178 126 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect x="12" y="12" width="232" height="232" rx="54" fill="url(#tile)"/>
+  <rect x="12.5" y="12.5" width="231" height="231" rx="53.5" fill="none" stroke="#ffffff" stroke-opacity="0.10"/>
+
+  <!-- The eyepiece barrel. -->
+  <circle cx="128" cy="128" r="95" fill="#0c0c0d"/>
+  <circle cx="128" cy="128" r="94.5" fill="none" stroke="#ffffff" stroke-opacity="0.14"/>
+
+  <g clip-path="url(#fieldClip)">
+    <circle cx="128" cy="128" r="80" fill="url(#field)"/>
+    <!-- Pearlite: dark, with lamellae. -->
+    <g clip-path="url(#pearliteClip)">
+      <rect x="140" y="20" width="112" height="112" fill="#5a2a12"/>
+      <g stroke="#c47a4c" stroke-opacity="0.55" stroke-width="3">
+        <path d="M150 40 L230 120"/>
+        <path d="M150 28 L242 120"/>
+        <path d="M162 22 L250 110"/>
+        <path d="M176 22 L250 96"/>
+        <path d="M190 22 L250 82"/>
+        <path d="M150 52 L218 120"/>
+        <path d="M150 64 L206 120"/>
+      </g>
+    </g>
+    <!-- Grain boundaries. -->
+    <g fill="none" stroke="#3a1906" stroke-opacity="0.85" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M102 98 L150 84 L178 126 L152 146 L108 150 Z"/>
+      <path d="M102 98 L84 36"/>
+      <path d="M150 84 L170 22"/>
+      <path d="M178 126 L250 104"/>
+      <path d="M152 146 L166 198 L156 250"/>
+      <path d="M166 198 L230 214"/>
+      <path d="M108 150 L56 172"/>
+      <path d="M108 150 L114 250"/>
+      <path d="M102 98 L30 106"/>
+    </g>
+    <circle cx="128" cy="128" r="80" fill="url(#vignette)"/>
+  </g>
+</svg>

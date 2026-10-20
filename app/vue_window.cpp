@@ -8,6 +8,7 @@
 #include "phase_overlay_treatment.hpp"
 #include "qt_image.hpp"
 #include "slot_guard.hpp"
+#include "theme.hpp"
 #include "vickers.hpp"
 #include "wait_cursor.hpp"
 
@@ -64,32 +65,44 @@ QString micronsLabel(const std::string& label) {
 cv::Point2d toImagePoint(QPointF point) { return {point.x(), point.y()}; }
 QPointF toViewPoint(cv::Point2d point) { return {point.x, point.y}; }
 
+// The capture details, a muted name beside each value.
 QString captureText(const Vue& vue) {
-    QStringList lines;
-    lines << VueWindow::tr("Fichier : %1").arg(toQString(vue.imagePath().filename()));
-    lines << VueWindow::tr("Image : %1x%2").arg(vue.original().cols).arg(vue.original().rows);
+    QList<std::pair<QString, QString>> rows;
+    rows.append({VueWindow::tr("Fichier"), toQString(vue.imagePath().filename())});
+    rows.append({VueWindow::tr("Image"), QStringLiteral("%1×%2").arg(vue.original().cols).arg(vue.original().rows)});
     if (const auto& calibration = vue.calibration()) {
-        lines << VueWindow::tr("Calibration : %1, %2 px/µm%3")
-                     .arg(QString::fromStdString(calibration->grossissement))
-                     .arg(calibration->pixelsPerMicron, 0, 'f', 4)
-                     .arg(calibration->isDerived()
-                              ? VueWindow::tr(" (déduite de %1)").arg(QString::fromStdString(calibration->derivedFrom))
-                              : QString());
+        rows.append({VueWindow::tr("Calibration"),
+                     VueWindow::tr("%1, %2 px/µm%3")
+                         .arg(QString::fromStdString(calibration->grossissement))
+                         .arg(calibration->pixelsPerMicron, 0, 'f', 4)
+                         .arg(calibration->isDerived()
+                                  ? VueWindow::tr(" (déduite de %1)").arg(QString::fromStdString(calibration->derivedFrom))
+                                  : QString())});
     } else {
-        lines << VueWindow::tr("Sans Calibration : ni Échelle ni mesure.");
+        rows.append({VueWindow::tr("Calibration"), VueWindow::tr("aucune : ni Échelle ni mesure")});
     }
     if (const auto& info = vue.captureInfo()) {
-        lines << VueWindow::tr("Exposition : %1").arg(info->exposureMs ? QStringLiteral("%1 ms").arg(*info->exposureMs)
-                                                                        : VueWindow::tr("automatique ou inconnue"));
-        lines << VueWindow::tr("Température de couleur : %1")
-                     .arg(info->whiteBalanceKelvin ? QStringLiteral("%1 K").arg(*info->whiteBalanceKelvin)
-                                                   : VueWindow::tr("automatique ou inconnue"));
-        lines << VueWindow::tr("Référence blanche : R %1, V %2, B %3")
-                     .arg(info->whiteReference.red, 0, 'f', 3)
-                     .arg(info->whiteReference.green, 0, 'f', 3)
-                     .arg(info->whiteReference.blue, 0, 'f', 3);
+        const QString unknown = VueWindow::tr("auto ou inconnue");
+        rows.append({VueWindow::tr("Exposition"),
+                     info->exposureMs ? QStringLiteral("%1 ms").arg(*info->exposureMs) : unknown});
+        rows.append({VueWindow::tr("Couleur"),
+                     info->whiteBalanceKelvin ? QStringLiteral("%1 K").arg(*info->whiteBalanceKelvin) : unknown});
+        rows.append({VueWindow::tr("Réf. blanche"), VueWindow::tr("R %1 · V %2 · B %3")
+                                                        .arg(info->whiteReference.red, 0, 'f', 3)
+                                                        .arg(info->whiteReference.green, 0, 'f', 3)
+                                                        .arg(info->whiteReference.blue, 0, 'f', 3)});
     }
-    return lines.join(QLatin1Char('\n'));
+    QString html = QStringLiteral("<table cellspacing=\"0\" cellpadding=\"2\">");
+    for (const auto& [name, value] : rows) {
+        // The file name may break after its _ and -, so it wraps instead of
+        // widening the panel.
+        QString breakable = value.toHtmlEscaped();
+        breakable.replace(QLatin1Char('_'), QStringLiteral("_&#8203;")).replace(QLatin1Char('-'), QStringLiteral("-&#8203;"));
+        html += QStringLiteral("<tr><td style=\"color:%1; padding-right:12px; white-space:nowrap\">%2</td>"
+                               "<td>%3</td></tr>")
+                    .arg(theme::textMuted.name(), name.toHtmlEscaped(), breakable);
+    }
+    return html + QStringLiteral("</table>");
 }
 
 } // namespace
@@ -102,12 +115,11 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
 
     banner_ = new QLabel;
     banner_->setWordWrap(true);
-    banner_->setMargin(8);
-    banner_->setStyleSheet(QStringLiteral("background: #f8d7da; color: #58151c;"));
+    theme::setRole(banner_, "banner", QStringLiteral("danger"));
     // ADR 0003/0015: what the sidecar lost, while the photo itself loaded.
     if (const auto& error = vue_.sidecarError()) {
-        banner_->setText(tr("⚠ Une partie des traitements de cette Vue n'a pas pu être relue ; le fichier est mis de "
-                            "côté à la prochaine modification.\n%1")
+        banner_->setText(tr("⚠ Traitements en partie illisibles : le fichier sera mis de côté à la prochaine "
+                            "modification.\n%1")
                              .arg(QString::fromStdString(*error)));
     } else {
         banner_->hide();
@@ -125,6 +137,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
 
     // Capture details.
     auto* info = new QLabel(captureText(vue_));
+    info->setTextFormat(Qt::RichText);
     info->setWordWrap(true);
     info->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
@@ -132,6 +145,7 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     treatments_ = new QListWidget;
     treatments_->setMaximumHeight(110);
     auto* remove = new QPushButton(tr("Retirer le traitement choisi"));
+    theme::setRole(remove, "variant", QStringLiteral("quiet"));
     black_ = new QSpinBox;
     black_->setRange(0, 254);
     white_ = new QSpinBox;
@@ -173,13 +187,15 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     load_->setCurrentIndex(load_->findData(kLegacyVickersLoadKgf));
     toolPrompt_ = new QLabel;
     toolPrompt_->setWordWrap(true);
-    toolPrompt_->setStyleSheet(QStringLiteral("background: #e7f1ff; padding: 6px; font-weight: bold;"));
+    theme::setRole(toolPrompt_, "callout", QStringLiteral("accent"));
     toolPrompt_->hide();
     measureResult_ = new QLabel;
     measureResult_->setObjectName(QStringLiteral("measureResult"));
     measureResult_->setWordWrap(true);
     measureResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    theme::setRole(measureResult_, "role", QStringLiteral("readout"));
     auto* clearMarks = new QPushButton(tr("Effacer les mesures"));
+    theme::setRole(clearMarks, "variant", QStringLiteral("quiet"));
     auto* measureBox = new QGroupBox(tr("Mesures"));
     auto* measureLayout = new QVBoxLayout(measureBox);
     measureLayout->addWidget(lengthTool_);
@@ -192,27 +208,30 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     measureLayout->addWidget(clearMarks);
     auto* escape = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     if (!vue_.calibration()) {
-        const QString why = tr("Cette Vue n'a pas de Calibration : aucune mesure n'est possible (ADR 0015).");
+        const QString why = tr("Vue sans Calibration : mesures impossibles.");
         lengthTool_->setEnabled(false);
         vickersTool_->setEnabled(false);
         lengthTool_->setToolTip(why);
         vickersTool_->setToolTip(why);
         measureResult_->setText(why);
+        theme::setRole(measureResult_, "role", QStringLiteral("muted"));
     }
 
     // Phase analysis, on the whole photo or on a zone of it (#55).
     zoneTool_ = new QPushButton(tr("Choisir une zone…"));
     zoneTool_->setCheckable(true);
-    zoneTool_->setToolTip(tr("Glissez un rectangle sur l'image : l'analyse ne porte que sur cette zone, pour laisser "
-                             "de côté poussières et inclusions. Plus la zone est petite, moins elle compte de grains "
-                             "et moins le pourcentage est sûr."));
+    zoneTool_->setToolTip(tr("Glisser un rectangle sur l'image pour exclure poussières et inclusions. Plus la zone "
+                             "est petite, moins le pourcentage est sûr."));
     auto* wholeImage = new QPushButton(tr("Toute l'image"));
     zoneLabel_ = new QLabel;
     zoneLabel_->setWordWrap(true);
+    theme::setRole(zoneLabel_, "role", QStringLiteral("muted"));
     auto* calcul = new QPushButton(tr("CALCUL : pourcentage des constituants"));
     calcul->setObjectName(QStringLiteral("calculButton"));
+    theme::setRole(calcul, "variant", QStringLiteral("primary"));
     phaseResult_ = new QLabel;
     phaseResult_->setObjectName(QStringLiteral("phaseResult"));
+    phaseResult_->setWordWrap(true);
     phaseResult_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     histogram_ = new HistogramWidget;
     phaseMap_ = new QPushButton(tr("Afficher la carte des phases"));
@@ -236,13 +255,19 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     refreshZone();
 
     principale_ = new QPushButton;
-    auto* exportCopy = new QPushButton(tr("Exporter une copie (traitements appliqués)…"));
+    auto* exportCopy = new QPushButton(tr("Exporter une copie…"));
+    exportCopy->setToolTip(tr("La Vue avec ses traitements, en PNG, TIFF ou JPEG."));
+    auto* vueButtons = new QHBoxLayout;
+    vueButtons->setSpacing(8);
+    vueButtons->addWidget(principale_, 1);
+    vueButtons->addWidget(exportCopy, 1);
 
     auto* panel = new QWidget;
     auto* panelLayout = new QVBoxLayout(panel);
+    panelLayout->setContentsMargins(12, 12, 12, 12);
+    panelLayout->setSpacing(10);
     panelLayout->addWidget(info);
-    panelLayout->addWidget(principale_);
-    panelLayout->addWidget(exportCopy);
+    panelLayout->addLayout(vueButtons);
     panelLayout->addWidget(treatmentsBox);
     panelLayout->addWidget(measureBox);
     panelLayout->addWidget(phaseBox);
@@ -250,11 +275,13 @@ VueWindow::VueWindow(Vue vue, VueStore store, VueLocation location, QWidget* par
     // At the bottom, away from the everyday buttons; the main window asks
     // first, then moves the Vue to the Corbeille and closes this window.
     auto* deleteVue = new QPushButton(tr("Supprimer la Vue…"));
-    deleteVue->setToolTip(tr("Déplace la Vue, avec ses traitements, dans la Corbeille du dossier des Vues."));
+    deleteVue->setToolTip(tr("Déplacer la Vue dans la Corbeille. Rien n'est effacé."));
+    theme::setRole(deleteVue, "variant", QStringLiteral("danger"));
     panelLayout->addWidget(deleteVue);
     auto* scroll = new QScrollArea;
     scroll->setWidget(panel);
     scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // the panel wraps to the dock's width
     auto* dock = new QDockWidget(tr("Vue"));
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setWidget(scroll);
@@ -358,8 +385,12 @@ void VueWindow::refreshPrincipale() {
         flagged = store_.principale(location_) == vue_.imagePath();
     } catch (const std::exception&) {
     }
-    principale_->setText(flagged ? tr("★ Vue principale de l'Échantillon") : tr("☆ Choisir comme Vue principale"));
+    // Flagged, the disabled button reads as a copper badge, not as greyed out.
+    principale_->setText(flagged ? tr("★ Vue principale") : tr("☆ Vue principale"));
+    principale_->setToolTip(flagged ? tr("La Vue imprimée sur la Fiche du TP.")
+                                    : tr("Choisir comme Vue principale : celle imprimée sur la Fiche du TP."));
     principale_->setEnabled(!flagged);
+    theme::setRole(principale_, "flagged", flagged ? QStringLiteral("true") : QStringLiteral("false"));
 }
 
 void VueWindow::previewLevels() {
@@ -438,9 +469,12 @@ void VueWindow::refreshTool() {
             };
             prompt = tr(steps[std::min<std::size_t>(done, 3)]);
         }
-        prompt += tr("\nGlisser un point jaune : le corriger. Clic droit dessus : supprimer la mesure. "
-                     "Retour arrière : annuler le dernier point. Échap ou le même bouton : terminer.");
+        prompt += tr("\nGlisser un point jaune : le corriger. Clic droit : supprimer la mesure. Retour arrière : "
+                     "annuler le point. Échap : terminer.");
     }
+    // French puts a space before a colon: a non-breaking one, so the colon
+    // never starts a line.
+    prompt.replace(QStringLiteral(" :"), QString(QChar(0x00A0)) + QLatin1Char(':'));
     toolPrompt_->setText(prompt);
     toolPrompt_->setVisible(!prompt.isEmpty());
 }
@@ -589,17 +623,25 @@ void VueWindow::analysePhases() {
         phases_.reset();
         histogram_->clear();
         phaseMap_->setEnabled(false);
-        phaseResult_->setText(tr("Seuil introuvable : l'image n'a pas de contours assez nets entre les phases "
-                                 "(floue, sans contraste ou vide). Aucun pourcentage n'est donné."));
+        phaseResult_->setText(tr("Seuil introuvable : contours trop flous entre les phases. Aucun pourcentage."));
         return;
     }
+    // The two percentages large, how far to trust them under.
     const PhaseFractions& f = phases_->fractions;
-    phaseResult_->setText(tr("Phase sombre : %1 %\nPhase claire : %2 %\nIncertitude : %3 %\nSeuil : %4 ± %5")
-                              .arg(f.darkPercent, 0, 'f', 1)
-                              .arg(f.lightPercent, 0, 'f', 1)
-                              .arg(f.errorPercent, 0, 'f', 1)
-                              .arg(phases_->threshold.threshold)
-                              .arg(phases_->threshold.tolerance));
+    const auto row = [](const QString& name, const QString& value, bool large) {
+        return QStringLiteral("<tr><td style=\"color:%1\">%2</td><td align=\"right\" style=\"%3\">%4</td></tr>")
+            .arg(theme::textMuted.name(), name.toHtmlEscaped(),
+                 large ? QStringLiteral("font-size:13pt; font-weight:600") : QString(), value.toHtmlEscaped());
+    };
+    phaseResult_->setText(QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"2\">") +
+                          row(tr("Phase sombre"), QStringLiteral("%1 %").arg(f.darkPercent, 0, 'f', 1), true) +
+                          row(tr("Phase claire"), QStringLiteral("%1 %").arg(f.lightPercent, 0, 'f', 1), true) +
+                          row(tr("Incertitude"), QStringLiteral("± %1 %").arg(f.errorPercent, 0, 'f', 1), false) +
+                          row(tr("Seuil"), QStringLiteral("%1 ± %2")
+                                               .arg(phases_->threshold.threshold)
+                                               .arg(phases_->threshold.tolerance),
+                              false) +
+                          QStringLiteral("</table>"));
     histogram_->setHistogram(phases_->threshold.histogram, phases_->threshold.threshold, phases_->threshold.tolerance);
     phaseMap_->setEnabled(true);
 }
@@ -620,7 +662,7 @@ void VueWindow::refreshZone() {
         return;
     }
     const cv::Size size = vue_.original().size();
-    zoneLabel_->setText(tr("Zone analysée : %1x%2 px, %3 % de l'image.")
+    zoneLabel_->setText(tr("Zone analysée : %1×%2 px, %3 % de l'image.")
                             .arg(zone_->width)
                             .arg(zone_->height)
                             .arg(100.0 * zone_->area() / (static_cast<double>(size.width) * size.height), 0, 'f', 0));

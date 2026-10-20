@@ -31,12 +31,16 @@ LocationPicker::LocationPicker(QWidget* parent) : QWidget(parent) {
     }
     noCatalog_ = new QLabel(tr("Aucun catalogue de TP : les Vues sont rangées dans « Non classé »."));
 
+    // Each label tight to its field, the three pairs apart.
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(8);
     layout->addWidget(new QLabel(tr("Département")));
     layout->addWidget(department_);
+    layout->addSpacing(12);
     layout->addWidget(new QLabel(tr("TP")));
     layout->addWidget(tp_);
+    layout->addSpacing(12);
     layout->addWidget(new QLabel(tr("Échantillon")));
     layout->addWidget(echantillon_);
     layout->addWidget(noCatalog_);

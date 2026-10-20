@@ -46,11 +46,10 @@ struct Calibration {
         if (isDerived()) {
             return "Calibration " + grossissement + " (derived from " + derivedFrom + ") was measured at " +
                    measured + " but the image is " + actual + ". Recalibrate " + derivedFrom + " or " +
-                   grossissement + " at " + actual + " or restore the camera mode it was measured in (ADR 0015).";
+                   grossissement + " at " + actual + " or restore the camera mode it was measured in.";
         }
         return "Calibration " + grossissement + " was measured at " + measured + " but the image is " + actual +
-               ". Recalibrate " + grossissement + " at " + actual +
-               " or restore the camera mode it was measured in (ADR 0015).";
+               ". Recalibrate " + grossissement + " at " + actual + " or restore the camera mode it was measured in.";
     }
 
     // Throws std::runtime_error with frameMismatch()'s reason when !fitsFrame.

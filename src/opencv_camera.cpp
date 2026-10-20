@@ -20,10 +20,11 @@ OpenCvCamera::OpenCvCamera(int deviceIndex, int apiPreference, cv::Size requeste
 void OpenCvCamera::open() {
     if (capture_.isOpened()) return;
     if (!capture_.open(deviceIndex_, apiPreference_)) {
+        // The Moticam A5 is UVC and appears here (ADR 0013); WinUSB-only
+        // Motic models never do (ADR 0011).
         throw std::runtime_error("OpenCvCamera: no camera at index " + std::to_string(deviceIndex_) +
                                  ". Check it is plugged in and not held by another program (e.g. "
-                                 "MotiConnect). The Moticam A5 is UVC and should appear here "
-                                 "(ADR 0013); WinUSB-only Motic models do not (ADR 0011).");
+                                 "MotiConnect).");
     }
     // Format before size: some drivers only offer the large modes in MJPG.
     // set()'s return values are not trusted: drivers report success and fall

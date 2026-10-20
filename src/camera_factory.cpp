@@ -75,9 +75,10 @@ std::unique_ptr<ICamera> makeCamera(const CameraConfig& config) {
                                               cv::Size(config.width, config.height), config.pixelFormat);
     }
     if (config.backend == "motic") {
+        // ADR 0013: the A5 is UVC; ADR 0011: only WinUSB-only models need the SDK.
         throw std::runtime_error(
             "makeCamera: there is no Motic SDK backend. The Moticam A5 is a UVC camera — use backend "
-            "\"opencv\" (ADR 0013). An SDK backend is only needed for WinUSB-only Motic models (ADR 0011).");
+            "\"opencv\".");
     }
     throw std::invalid_argument("makeCamera: unknown camera backend '" + config.backend + "'");
 }

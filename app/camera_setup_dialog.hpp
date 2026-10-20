@@ -50,7 +50,7 @@ public:
                       QWidget* parent = nullptr);
 
     // The window's answers.
-    void showMessage(const QString& message);  // replaces the preview, e.g. while searching
+    void showMessage(const QString& message);  // replaces the preview, with a spinner, while searching
     void cameraStarting();
     void cameraOpened(const ProfileReport& report);
     void cameraFailed(const QString& message);
@@ -106,6 +106,7 @@ private:
 
     PreviewWidget* preview_;
     QLabel* liveStatus_;
+    QWidget* stepStrip_;  // a StepStrip, local to the .cpp
     QLabel* stepTitle_;
     QStackedWidget* pages_;
     QPushButton* back_;

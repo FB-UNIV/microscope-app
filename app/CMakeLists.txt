@@ -35,6 +35,8 @@ qt_add_library(microscope_app_ui STATIC
     qt_image.cpp
     qt_image.hpp
     slot_guard.hpp
+    theme.cpp
+    theme.hpp
     vue_window.cpp
     vue_window.hpp
     wait_cursor.hpp
@@ -42,9 +44,41 @@ qt_add_library(microscope_app_ui STATIC
 target_include_directories(microscope_app_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(microscope_app_ui PUBLIC microscope_core Qt6::Widgets)
 
+# The Métallo icon (ADR 0023) and the style sheet's glyphs, as PNGs: an
+# SVG would need the Qt Svg module, which neither CI job installs.
+# resources/metallo.svg and metallo-small.svg are the sources the icon is
+# drawn from.
+qt_add_resources(microscope_app_ui "branding"
+    PREFIX "/metallo"
+    BASE resources
+    FILES
+        resources/check.png
+        resources/check@2x.png
+        resources/chevron-down.png
+        resources/chevron-down@2x.png
+        resources/chevron-down-disabled.png
+        resources/chevron-down-disabled@2x.png
+        resources/chevron-up.png
+        resources/chevron-up@2x.png
+        resources/chevron-up-disabled.png
+        resources/chevron-up-disabled@2x.png
+        resources/metallo-16.png
+        resources/metallo-20.png
+        resources/metallo-24.png
+        resources/metallo-32.png
+        resources/metallo-40.png
+        resources/metallo-48.png
+        resources/metallo-64.png
+        resources/metallo-128.png
+        resources/metallo-256.png
+)
+
 qt_add_executable(microscope_app main.cpp)
 target_link_libraries(microscope_app PRIVATE microscope_app_ui)
 set_target_properties(microscope_app PROPERTIES WIN32_EXECUTABLE ON)
+if(WIN32)
+    target_sources(microscope_app PRIVATE resources/metallo.rc)  # the exe's icon in Explorer
+endif()
 
 # Launch check: shows the MainWindow, then quits once the event loop runs.
 # Offscreen, so it needs no display (CI, WSL). The Windows job also runs it
@@ -58,7 +92,7 @@ add_test(NAME microscope_app_version COMMAND microscope_app --version)
 set_tests_properties(microscope_app_version PROPERTIES
                      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES=1"
                      TIMEOUT 60
-                     PASS_REGULAR_EXPRESSION "^Microscope Capture ${msapp_version}")
+                     PASS_REGULAR_EXPRESSION "^Metallo ${msapp_version}")
 
 # Widget tests (QtTest): the mouse gestures of the image view — click, pan,
 # handle drag and right-click, rectangle mode. Offscreen, like the launch check.

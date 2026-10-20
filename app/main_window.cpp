@@ -12,6 +12,7 @@
 #include "image_io.hpp"
 #include "qt_image.hpp"
 #include "slot_guard.hpp"
+#include "theme.hpp"
 #include "vue_window.hpp"
 #include "wait_cursor.hpp"
 
@@ -32,11 +33,14 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStatusBar>
+#include <QStyledItemDelegate>
 #include <QThread>
 #include <QTimeZone>
 #include <QTimer>
@@ -57,7 +61,10 @@ namespace {
 
 constexpr int kPathRole = Qt::UserRole;
 constexpr int kThumbnailRole = Qt::UserRole + 1;
+constexpr int kPrincipaleRole = Qt::UserRole + 2;
+constexpr int kTakenRole = Qt::UserRole + 3;  // local QDateTime; invalid for a file VueStore didn't name
 const QSize kThumbnailSize(192, 108);
+const QSize kRowThumbnail(128, 72);  // as the list draws it
 
 // What the profile asks for, shown until the camera says what it granted.
 QString requestedMode(const CameraConfig& camera) {
@@ -93,18 +100,113 @@ QStringList grossissementChoices(const WorkstationConfig& config) {
     return choices;
 }
 
-// "15/10/2026 17:43:53" in local time, from the UTC time a VueStore file
-// name starts with; the bare name for any other file.
-QString vueLabel(const std::filesystem::path& vue, bool principale) {
+// When the Vue was taken, in local time, from the UTC time a VueStore file
+// name starts with; invalid for any other file.
+QDateTime vueTaken(const std::filesystem::path& vue) {
     const QString name = toQString(vue.filename());
     const QDate date = QDate::fromString(name.left(8), QStringLiteral("yyyyMMdd"));
     const QTime time = QTime::fromString(name.mid(9, 6), QStringLiteral("HHmmss"));
-    QString label = name;
-    if (date.isValid() && time.isValid()) {
-        label = QDateTime(date, time, QTimeZone(0)).toLocalTime().toString(QStringLiteral("dd/MM/yyyy HH:mm:ss"));
-    }
+    if (!date.isValid() || !time.isValid()) return {};
+    return QDateTime(date, time, QTimeZone(0)).toLocalTime();
+}
+
+// "15/10/2026 17:43:53", or the bare name for a file VueStore didn't name.
+QString vueLabel(const std::filesystem::path& vue, bool principale) {
+    const QDateTime taken = vueTaken(vue);
+    const QString label =
+        taken.isValid() ? taken.toString(QStringLiteral("dd/MM/yyyy HH:mm:ss")) : toQString(vue.filename());
     return principale ? QStringLiteral("★ ") + label + MainWindow::tr(" — Vue principale") : label;
 }
+
+// A Vue of the list: its thumbnail, the time and date it was taken, and a
+// badge on the Vue principale. Every row is as tall before its thumbnail
+// is decoded as after, so the list doesn't jump while they load.
+class VueItemDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem& /*option*/, const QModelIndex& /*index*/) const override {
+        return {kRowThumbnail.width() + 120, kRowThumbnail.height() + 16};
+    }
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        const QRectF row = QRectF(option.rect).adjusted(1.5, 1.5, -1.5, -1.5);
+        if (option.state & QStyle::State_Selected) {
+            QColor fill = theme::accent;
+            fill.setAlpha(0x33);
+            QColor edge = theme::accent;
+            edge.setAlpha(0x80);
+            painter->setPen(edge);
+            painter->setBrush(fill);
+            painter->drawRoundedRect(row, 6, 6);
+        } else if (option.state & QStyle::State_MouseOver) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(255, 255, 255, 10));
+            painter->drawRoundedRect(row, 6, 6);
+        }
+
+        // The thumbnail, on the canvas while it loads, with a neutral edge.
+        // It fills its slot, cropped: every frame shape lines up the same.
+        const QRect thumb(option.rect.topLeft() + QPoint(8, 8), kRowThumbnail);
+        QPainterPath rounded;
+        rounded.addRoundedRect(QRectF(thumb), 4, 4);
+        painter->save();
+        painter->setClipPath(rounded);
+        painter->fillRect(thumb, theme::canvas);
+        const QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
+        if (!icon.isNull()) {
+            const QPixmap pixmap = icon.pixmap(kThumbnailSize);
+            QRect target(QPoint(0, 0), pixmap.size().scaled(thumb.size(), Qt::KeepAspectRatioByExpanding));
+            target.moveCenter(thumb.center());
+            painter->setRenderHint(QPainter::SmoothPixmapTransform);
+            painter->drawPixmap(target, pixmap);
+        }
+        painter->restore();
+        painter->setPen(QColor(255, 255, 255, 26));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(QRectF(thumb).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+
+        // Time over date: within a session the time is what tells Vues apart.
+        const QDateTime taken = index.data(kTakenRole).toDateTime();
+        const int left = thumb.right() + 13;
+        const int width = std::max(0, option.rect.right() - 8 - left);
+        QFont strong = option.font;
+        strong.setWeight(QFont::DemiBold);
+        const QFontMetrics strongMetrics(strong);
+        const QFontMetrics metrics(option.font);
+        int y = thumb.top() + 2;
+        painter->setFont(strong);
+        painter->setPen(theme::text);
+        const QString first = taken.isValid() ? taken.toString(QStringLiteral("HH:mm:ss"))
+                                              : index.data(Qt::ToolTipRole).toString();
+        painter->drawText(QRect(left, y, width, strongMetrics.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                          strongMetrics.elidedText(first, Qt::ElideMiddle, width));
+        y += strongMetrics.height() + 2;
+        if (taken.isValid()) {
+            painter->setFont(option.font);
+            painter->setPen(theme::textMuted);
+            painter->drawText(QRect(left, y, width, metrics.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                              taken.toString(QStringLiteral("dd/MM/yyyy")));
+            y += metrics.height();
+        }
+        if (index.data(kPrincipaleRole).toBool()) {
+            const QString badge = MainWindow::tr("★ Principale");
+            const QRectF pill(left, thumb.bottom() - metrics.height() - 3, metrics.horizontalAdvance(badge) + 16,
+                              metrics.height() + 4);
+            QColor fill = theme::accent;
+            fill.setAlpha(0x33);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(fill);
+            painter->drawRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+            painter->setFont(option.font);
+            painter->setPen(theme::accentText);
+            painter->drawText(pill, Qt::AlignCenter, badge);
+        }
+        painter->restore();
+    }
+};
 
 bool hasEchantillon(const Catalog& catalog) {
     for (const auto& department : catalog.departments) {
@@ -195,8 +297,7 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
     banner_ = new QLabel;
     banner_->setWordWrap(true);
-    banner_->setMargin(8);
-    banner_->setStyleSheet(QStringLiteral("background: #fff3cd; color: #664d03;"));
+    theme::setRole(banner_, "banner", QStringLiteral("warning"));
     banner_->hide();
     preview_ = new PreviewWidget;
 
@@ -215,85 +316,104 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     where->addWidget(picker_);
     addToolBarBreak();
 
-    // How it is taken.
+    // How it is taken: the capture settings on the left, the camera and the
+    // panel on the right.
     grossissement_ = new QComboBox;
     calibrationLabel_ = new QLabel;
     captureButton_ = new QPushButton(tr("Capturer (Espace)"));
     // Object names: how app/tests/test_app_e2e.cpp finds the widgets it drives.
     captureButton_->setObjectName(QStringLiteral("captureButton"));
     captureButton_->setShortcut(QKeySequence(Qt::Key_Space));
-    captureButton_->setStyleSheet(QStringLiteral("font-weight: bold; padding: 4px 16px;"));
+    theme::setRole(captureButton_, "variant", QStringLiteral("primary"));
+    theme::setRole(captureButton_, "size", QStringLiteral("large"));
     QToolBar* how = addToolBar(tr("Capture"));
     how->setMovable(false);
-    how->addWidget(new QLabel(tr("Grossissement ")));
+    how->addWidget(new QLabel(tr("Grossissement")));
     how->addWidget(grossissement_);
     how->addWidget(calibrationLabel_);
     how->addSeparator();
     how->addWidget(captureButton_);
-    how->addSeparator();
+    auto* spacer = new QWidget;
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    how->addWidget(spacer);
     QAction* reconnect = how->addAction(tr("Reconnecter la caméra"));
     reconnect->setShortcut(QKeySequence::Refresh);
+    reconnect->setToolTip(tr("Reconnecter la caméra (%1)").arg(reconnect->shortcut().toString(QKeySequence::NativeText)));
 
     // The TP and the Échantillon's Vues.
     instructions_ = new QLabel;
     instructions_->setWordWrap(true);
-    instructions_->setStyleSheet(QStringLiteral("background: #e7f1ff; padding: 6px;"));
+    instructions_->setTextFormat(Qt::RichText);
+    theme::setRole(instructions_, "callout", QStringLiteral("note"));
     unsortedButton_ = new QPushButton;
     unsortedButton_->setCheckable(true);
-    unsortedButton_->setToolTip(tr("Les Vues prises avant que ce poste ait un catalogue de TP, à ranger chacune dans "
-                                   "son Échantillon."));
+    unsortedButton_->setToolTip(tr("Vues prises sans catalogue de TP, à ranger dans leur Échantillon."));
     vuesTitle_ = new QLabel;
     vuesTitle_->setWordWrap(true);
+    theme::setRole(vuesTitle_, "role", QStringLiteral("section"));
     vueList_ = new QListWidget;
     vueList_->setObjectName(QStringLiteral("vueList"));
-    vueList_->setIconSize(kThumbnailSize);
-    vueList_->setToolTip(tr("Double-cliquez une Vue pour l'ouvrir : traitements, mesures, analyse de phases."));
-    auto* open = new QPushButton(tr("Ouvrir la Vue"));
-    open->setObjectName(QStringLiteral("openVueButton"));
-    auto* principale = new QPushButton(tr("★ Choisir comme Vue principale"));
-    principale->setToolTip(tr("La Vue principale de l'Échantillon est celle de la Fiche du TP."));
-    auto* file = new QPushButton(tr("Classer la Vue…"));
-    file->setToolTip(tr("Range la Vue choisie, avec ses traitements, dans un Échantillon du catalogue : une Vue non "
-                        "classée, ou prise sous le mauvais Échantillon."));
-    auto* remove = new QPushButton(tr("Supprimer la Vue…"));
-    remove->setToolTip(tr("Déplace la Vue choisie, avec ses traitements, dans la Corbeille du dossier des Vues "
-                          "(touche Suppr). Rien n'est effacé."));
+    vueList_->setItemDelegate(new VueItemDelegate(vueList_));
+    vueList_->setUniformItemSizes(true);
+    vueList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    vueList_->setMouseTracking(true);
+    vueList_->viewport()->setAttribute(Qt::WA_Hover);
+    vueList_->setToolTip(tr("Double-clic : ouvrir la Vue."));
+    noVues_ = new QLabel(tr("Aucune Vue.\nEspace pour capturer."));
+    noVues_->setAlignment(Qt::AlignCenter);
+    theme::setRole(noVues_, "role", QStringLiteral("muted"));
+    noVues_->hide();
+    openButton_ = new QPushButton(tr("Ouvrir la Vue"));
+    openButton_->setObjectName(QStringLiteral("openVueButton"));
+    theme::setRole(openButton_, "variant", QStringLiteral("primary"));
+    principaleButton_ = new QPushButton(tr("★ Principale"));
+    principaleButton_->setToolTip(tr("Choisir comme Vue principale : celle imprimée sur la Fiche du TP."));
+    fileButton_ = new QPushButton(tr("Classer…"));
+    fileButton_->setToolTip(tr("Ranger la Vue dans un autre Échantillon."));
+    removeButton_ = new QPushButton(tr("Supprimer…"));
+    removeButton_->setToolTip(tr("Déplacer la Vue dans la Corbeille (Suppr). Rien n'est effacé."));
+    theme::setRole(removeButton_, "variant", QStringLiteral("danger"));
     // The same on the list itself: right-click, and Suppr.
     vueList_->setContextMenuPolicy(Qt::ActionsContextMenu);
-    QAction* openAction = new QAction(tr("Ouvrir la Vue"), vueList_);
-    QAction* principaleAction = new QAction(tr("★ Choisir comme Vue principale"), vueList_);
-    QAction* fileAction = new QAction(tr("Classer la Vue…"), vueList_);
-    QAction* removeAction = new QAction(tr("Supprimer la Vue…"), vueList_);
-    removeAction->setShortcut(QKeySequence::Delete);
-    removeAction->setShortcutContext(Qt::WidgetShortcut);
-    vueList_->addActions({openAction, principaleAction, fileAction, removeAction});
+    openAction_ = new QAction(tr("Ouvrir la Vue"), vueList_);
+    principaleAction_ = new QAction(tr("★ Choisir comme Vue principale"), vueList_);
+    fileAction_ = new QAction(tr("Classer la Vue…"), vueList_);
+    removeAction_ = new QAction(tr("Supprimer la Vue…"), vueList_);
+    removeAction_->setShortcut(QKeySequence::Delete);
+    removeAction_->setShortcutContext(Qt::WidgetShortcut);
+    vueList_->addActions({openAction_, principaleAction_, fileAction_, removeAction_});
     auto* side = new QWidget;
     auto* sideLayout = new QVBoxLayout(side);
+    sideLayout->setContentsMargins(12, 12, 12, 12);
+    sideLayout->setSpacing(8);
     sideLayout->addWidget(instructions_);
     sideLayout->addWidget(unsortedButton_);
+    sideLayout->addSpacing(4);
     sideLayout->addWidget(vuesTitle_);
     sideLayout->addWidget(vueList_, 1);
+    sideLayout->addWidget(noVues_, 1);
     auto* vueButtons = new QHBoxLayout;
-    vueButtons->addWidget(open);
-    vueButtons->addWidget(principale);
+    vueButtons->setSpacing(8);
+    vueButtons->addWidget(openButton_, 1);
+    vueButtons->addWidget(principaleButton_, 1);
     sideLayout->addLayout(vueButtons);
     auto* moreButtons = new QHBoxLayout;
-    moreButtons->addWidget(file);
-    moreButtons->addWidget(remove);
+    moreButtons->setSpacing(8);
+    moreButtons->addWidget(fileButton_, 1);
+    moreButtons->addWidget(removeButton_, 1);
     sideLayout->addLayout(moreButtons);
     auto* dock = new QDockWidget(tr("TP et Vues"));
     dock->setFeatures(QDockWidget::NoDockWidgetFeatures);
     dock->setWidget(side);
-    dock->setMinimumWidth(300);
+    dock->setMinimumWidth(320);
     addDockWidget(Qt::RightDockWidgetArea, dock);
 
     // Hides the panel for a bigger live view; the toolbars keep showing the
     // Échantillon and Grossissement a capture goes to, and capturing works
     // the same. Remembered on this PC.
-    how->addSeparator();
     QAction* panel = how->addAction(QString());
     panel->setShortcut(QKeySequence(Qt::Key_F9));
-    panel->setToolTip(tr("Masque ou affiche le panneau TP et Vues, pour agrandir l'image en direct."));
+    panel->setToolTip(tr("Agrandir l'image en direct."));
     const auto showPanel = [dock, panel](bool visible) {
         dock->setVisible(visible);
         panel->setText(visible ? MainWindow::tr("Masquer les Vues (F9)") : MainWindow::tr("Afficher les Vues (F9)"));
@@ -308,13 +428,17 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
     modeLabel_ = new QLabel;
     fpsLabel_ = new QLabel;
     fpsLabel_->setObjectName(QStringLiteral("fpsLabel"));
+    // As wide as the widest rate, so the status bar doesn't shift as it changes.
+    fpsLabel_->setMinimumWidth(fpsLabel_->fontMetrics().horizontalAdvance(tr("%1 images/s").arg(88.8, 0, 'f', 1)) + 16);
+    fpsLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     statusBar()->addWidget(modeLabel_);
     statusBar()->addPermanentWidget(fpsLabel_);
     // The OpenCV the app runs on, as camera_probe reports it. It also makes
     // the exe load the OpenCV DLL at start, so the CI launch check of the
     // Windows bundle proves the bundle ships it.
-    statusBar()->addPermanentWidget(
-        new QLabel(QStringLiteral("OpenCV %1").arg(QString::fromStdString(cv::getVersionString()))));
+    auto* opencv = new QLabel(QStringLiteral("OpenCV %1").arg(QString::fromStdString(cv::getVersionString())));
+    theme::setRole(opencv, "role", QStringLiteral("faint"));
+    statusBar()->addPermanentWidget(opencv);
 
     buildMenus();
     fillGrossissements();
@@ -322,15 +446,16 @@ MainWindow::MainWindow(AppSetup setup, QWidget* parent)
 
     connect(reconnect, &QAction::triggered, this, &MainWindow::startCamera);
     connect(captureButton_, &QPushButton::clicked, this, &MainWindow::capture);
-    connect(principale, &QPushButton::clicked, this, &MainWindow::flagPrincipale);
-    connect(open, &QPushButton::clicked, this, &MainWindow::openVue);
-    connect(file, &QPushButton::clicked, this, &MainWindow::fileSelectedVue);
-    connect(remove, &QPushButton::clicked, this, &MainWindow::deleteSelectedVue);
-    connect(openAction, &QAction::triggered, this, &MainWindow::openVue);
-    connect(principaleAction, &QAction::triggered, this, &MainWindow::flagPrincipale);
-    connect(fileAction, &QAction::triggered, this, &MainWindow::fileSelectedVue);
-    connect(removeAction, &QAction::triggered, this, &MainWindow::deleteSelectedVue);
+    connect(principaleButton_, &QPushButton::clicked, this, &MainWindow::flagPrincipale);
+    connect(openButton_, &QPushButton::clicked, this, &MainWindow::openVue);
+    connect(fileButton_, &QPushButton::clicked, this, &MainWindow::fileSelectedVue);
+    connect(removeButton_, &QPushButton::clicked, this, &MainWindow::deleteSelectedVue);
+    connect(openAction_, &QAction::triggered, this, &MainWindow::openVue);
+    connect(principaleAction_, &QAction::triggered, this, &MainWindow::flagPrincipale);
+    connect(fileAction_, &QAction::triggered, this, &MainWindow::fileSelectedVue);
+    connect(removeAction_, &QAction::triggered, this, &MainWindow::deleteSelectedVue);
     connect(vueList_, &QListWidget::itemActivated, this, &MainWindow::openVue);
+    connect(vueList_, &QListWidget::currentRowChanged, this, &MainWindow::refreshVueActions);
     connect(unsortedButton_, &QPushButton::toggled, this, &MainWindow::refreshVues);
     connect(grossissement_, &QComboBox::currentTextChanged, this, &MainWindow::refreshCaptureState);
     connect(picker_, &LocationPicker::locationChanged, this, [this] {
@@ -373,6 +498,45 @@ void MainWindow::buildMenus() {
 
     QMenu* fiche = menuBar()->addMenu(tr("&Fiche"));
     connect(fiche->addAction(tr("Générer la Fiche du TP…")), &QAction::triggered, this, &MainWindow::generateFiche);
+
+    QMenu* help = menuBar()->addMenu(tr("&Aide"));
+    connect(help->addAction(tr("Raccourcis clavier")), &QAction::triggered, this, &MainWindow::showShortcuts);
+    connect(help->addAction(tr("À propos de Métallo")), &QAction::triggered, this, &MainWindow::showAbout);
+}
+
+void MainWindow::showShortcuts() {
+    const auto row = [](const QString& keys, const QString& action) {
+        return QStringLiteral("<tr><td style=\"padding:3px 16px 3px 0\"><b>%1</b></td><td>%2</td></tr>")
+            .arg(keys.toHtmlEscaped(), action.toHtmlEscaped());
+    };
+    QString html = QStringLiteral("<table>");
+    html += row(tr("Espace"), tr("Capturer"));
+    html += row(tr("F5"), tr("Reconnecter la caméra"));
+    html += row(tr("F9"), tr("Masquer ou afficher les Vues"));
+    html += row(tr("Entrée, double-clic"), tr("Ouvrir la Vue"));
+    html += row(tr("Suppr"), tr("Supprimer la Vue"));
+    html += QStringLiteral("<tr><td colspan=\"2\" style=\"padding-top:10px\"><b>%1</b></td></tr>")
+                .arg(tr("Dans une Vue").toHtmlEscaped());
+    html += row(tr("Molette"), tr("Zoom"));
+    html += row(tr("Glisser"), tr("Déplacer l'image"));
+    html += row(tr("Retour arrière"), tr("Annuler le dernier point"));
+    html += row(tr("Échap"), tr("Ranger l'outil"));
+    html += QStringLiteral("</table>");
+    QMessageBox box(QMessageBox::NoIcon, tr("Raccourcis clavier"), html, QMessageBox::Close, this);
+    box.setTextFormat(Qt::RichText);
+    box.exec();
+}
+
+void MainWindow::showAbout() {
+    QMessageBox box(this);
+    box.setWindowTitle(tr("À propos de Métallo"));
+    box.setIconPixmap(theme::appIcon().pixmap(64, 64));
+    box.setTextFormat(Qt::RichText);
+    box.setText(QStringLiteral("<h3 style=\"margin:0\">Métallo</h3><p>%1</p><p>%2<br>Qt %3 · OpenCV %4</p>")
+                    .arg(tr("Capture, mesures et analyse de phases au microscope métallographique."),
+                         tr("Version %1").arg(QCoreApplication::applicationVersion().toHtmlEscaped()),
+                         QString::fromLatin1(qVersion()), QString::fromStdString(cv::getVersionString())));
+    box.exec();
 }
 
 void MainWindow::generateFiche() {
@@ -390,8 +554,7 @@ void MainWindow::generateFiche() {
     if (!missing.isEmpty()) {
         const auto answer = QMessageBox::question(
             this, tr("Fiche du TP"),
-            tr("Ces Échantillons n'ont pas de Vue principale :\n%1\n\nGénérer quand même la Fiche ? Un cadre vide les "
-               "signalera.")
+            tr("Sans Vue principale :\n%1\n\nGénérer la Fiche quand même ? Un cadre vide les remplacera.")
                 .arg(missing.join(QLatin1Char('\n'))));
         if (answer != QMessageBox::Yes) return;
     }
@@ -448,7 +611,7 @@ void MainWindow::startCamera() {
     if (searching_) return;
     const int generation = ++generation_;
     const CameraConfig camera = trialCamera_ ? *trialCamera_ : setup_.camera;
-    preview_->showMessage(tr("Ouverture de la caméra…"));
+    preview_->showBusy(tr("Ouverture de la caméra…"));
     if (setupDialog_) setupDialog_->cameraStarting();
     modeLabel_->setText(requestedMode(camera));
     fpsLabel_->clear();
@@ -482,8 +645,7 @@ void MainWindow::startCamera() {
         cameraOpen_ = false;
         busy_ = false;
         calibrateWhenOpen_ = false;
-        preview_->showMessage(tr("Caméra indisponible\n\n%1\n\nFermez MotiConnect ou tout autre programme qui "
-                                 "utilise la caméra, puis cliquez sur « Reconnecter la caméra ».")
+        preview_->showMessage(tr("Caméra indisponible\n\n%1\n\nFermez MotiConnect, puis Reconnecter la caméra (F5).")
                                   .arg(message));
         if (setupDialog_) setupDialog_->cameraFailed(message);
         fpsLabel_->clear();
@@ -552,26 +714,28 @@ void MainWindow::refreshCaptureState() {
     // last (ADR 0020).
     const auto stored = setup_.config.effectiveCalibration(name.toStdString());
     if (!stored) {
-        calibrationLabel_->setText(tr(" non calibré "));
-        captureWarning_ = tr("%1 n'est pas calibré sur ce poste : les Vues seront prises sans Échelle, et sans "
-                             "mesure possible. Menu Poste › Calibrer un grossissement : un seul objectif calibré "
-                             "sur la mire suffit, les autres en sont déduits.")
+        calibrationLabel_->setText(tr("Non calibré"));
+        calibrationLabel_->setToolTip(QString());
+        theme::setRole(calibrationLabel_, "chip", QStringLiteral("warning"));
+        captureWarning_ = tr("%1 non calibré : Vues sans Échelle ni mesure. Poste › Calibrer un grossissement (un "
+                             "seul objectif suffit).")
                               .arg(name);
     } else {
-        const QString origin = stored->isDerived()
-                                   ? tr(" (déduit de %1)").arg(QString::fromStdString(stored->derivedFrom))
-                                   : QString();
-        calibrationLabel_->setText(tr(" %1 px/µm%2, image %3x%4 ")
+        calibrationLabel_->setText(tr("%1 px/µm · %2×%3")
                                        .arg(stored->pixelsPerMicron, 0, 'f', 4)
-                                       .arg(origin)
                                        .arg(stored->frameWidth)
                                        .arg(stored->frameHeight));
+        calibrationLabel_->setToolTip(
+            stored->isDerived() ? tr("Déduit de %1").arg(QString::fromStdString(stored->derivedFrom))
+                                : tr("Mesuré sur la mire"));
+        theme::setRole(calibrationLabel_, "chip", QStringLiteral("ok"));
         if (frameSize_.isValid() && !stored->fitsFrame(frameSize_.width(), frameSize_.height())) {
             // ADR 0015: never applied to another frame size, never rescaled.
             const QString measured =
                 QString::fromStdString(stored->isDerived() ? stored->derivedFrom : stored->grossissement);
-            captureWarning_ = tr("%1 a été calibré en %2x%3 mais la caméra fournit %4x%5 : les Vues seront prises "
-                                 "sans Calibration. Reconnectez la caméra pour retrouver ce mode, ou recalibrez %1.")
+            theme::setRole(calibrationLabel_, "chip", QStringLiteral("warning"));
+            captureWarning_ = tr("%1 calibré en %2×%3, la caméra fournit %4×%5 : Vues sans Calibration. Reconnectez "
+                                 "la caméra ou recalibrez %1.")
                                   .arg(measured)
                                   .arg(stored->frameWidth)
                                   .arg(stored->frameHeight)
@@ -586,8 +750,12 @@ void MainWindow::refreshCaptureState() {
 void MainWindow::refreshVues() {
     vueList_->clear();
     const Tp* tp = picker_->tp();
-    instructions_->setText(tp ? QString::fromStdString(tp->instructions) : QString());
-    instructions_->setVisible(!instructions_->text().isEmpty());
+    const QString instructions = tp ? QString::fromStdString(tp->instructions).trimmed() : QString();
+    if (!instructions.isEmpty()) {
+        instructions_->setText(QStringLiteral("<b>%1</b><br>%2").arg(QString::fromStdString(tp->name).toHtmlEscaped(),
+                                                                      instructions.toHtmlEscaped()));
+    }
+    instructions_->setVisible(!instructions.isEmpty());
 
     // Without a catalog the picker itself is on Unsorted (ADR 0008); with
     // one, the Vues still there are listed on request, until all are filed.
@@ -606,9 +774,17 @@ void MainWindow::refreshVues() {
     unsortedButton_->setText(tr("Vues non classées (%n)", nullptr, unsorted));
     unsortedButton_->setVisible(unsorted > 0);
 
+    // Shows the list, or what stands in for it when it is empty.
+    const auto showList = [this](bool list, const QString& empty) {
+        vueList_->setVisible(list);
+        noVues_->setText(empty);
+        noVues_->setVisible(!list);
+        refreshVueActions();
+    };
     const auto where = listedLocation();
     if (!where) {
-        vuesTitle_->setText(tr("Ce TP n'a pas d'Échantillon : complétez le catalogue."));
+        vuesTitle_->setText(tr("Vues"));
+        showList(false, tr("Ce TP n'a pas d'Échantillon :\ncomplétez le catalogue."));
         return;
     }
     std::vector<std::filesystem::path> vues;
@@ -617,25 +793,38 @@ void MainWindow::refreshVues() {
         vues = store_.listVues(*where);
         principale = store_.principale(*where);
     } catch (const std::exception& e) {
-        vuesTitle_->setText(QString::fromStdString(e.what()));
+        vuesTitle_->setText(tr("Vues"));
+        showList(false, QString::fromStdString(e.what()));
         return;
     }
     const int count = static_cast<int>(vues.size());
     if (!where->isUnsorted()) {
-        vuesTitle_->setText(tr("Vues de l'Échantillon : %n", nullptr, count));
+        vuesTitle_->setText(tr("Vues de l'Échantillon (%n)", nullptr, count));
     } else if (setup_.catalog.empty()) {
-        vuesTitle_->setText(tr("Vues non classées : %n", nullptr, count));
+        vuesTitle_->setText(tr("Vues non classées (%n)", nullptr, count));
     } else {
-        vuesTitle_->setText(
-            tr("Vues non classées : %n. Choisissez-en une, puis « Classer la Vue… » pour la ranger dans son Échantillon.",
-               nullptr, count));
+        vuesTitle_->setText(tr("Vues non classées (%n) — à ranger avec « Classer… »", nullptr, count));
     }
     for (auto it = vues.rbegin(); it != vues.rend(); ++it) {  // newest first
-        auto* item = new QListWidgetItem(vueLabel(*it, principale && *principale == *it), vueList_);
+        const bool flagged = principale && *principale == *it;
+        auto* item = new QListWidgetItem(vueLabel(*it, flagged), vueList_);
         item->setData(kPathRole, toQString(*it));
+        item->setData(kPrincipaleRole, flagged);
+        item->setData(kTakenRole, vueTaken(*it));
         item->setToolTip(toQString(it->filename()));
     }
+    showList(count > 0, tr("Aucune Vue.\nEspace pour capturer."));
     QTimer::singleShot(0, this, &MainWindow::loadNextThumbnail);
+}
+
+void MainWindow::refreshVueActions() {
+    const QListWidgetItem* item = vueList_->currentItem();
+    const bool picked = item != nullptr && !vueList_->isHidden();  // hidden: noVues_ stands in for it
+    const bool flagged = picked && item->data(kPrincipaleRole).toBool();
+    for (QPushButton* button : {openButton_, fileButton_, removeButton_}) button->setEnabled(picked);
+    for (QAction* action : {openAction_, fileAction_, removeAction_}) action->setEnabled(picked);
+    principaleButton_->setEnabled(picked && !flagged);
+    principaleAction_->setEnabled(picked && !flagged);
 }
 
 void MainWindow::loadNextThumbnail() {
@@ -707,6 +896,7 @@ void MainWindow::capture() {
 
     busy_ = true;
     refreshCaptureState();
+    preview_->flash();
     statusBar()->showMessage(tr("Capture…"));
     const int generation = generation_;
     jobs_->post([this, generation, path, calibration](CaptureStation& station) {
@@ -732,10 +922,11 @@ void MainWindow::captured(int generation, const std::filesystem::path& vue, cons
         return;
     }
     statusBar()->showMessage(tr("Vue enregistrée : %1").arg(toQString(vue)), 10000);
-    // Shows where the new Vue went.
+    // Shows where the new Vue went, picked: newest first.
     const QSignalBlocker blocker(unsortedButton_);
     unsortedButton_->setChecked(false);
     refreshVues();
+    if (vueList_->count() > 0) vueList_->setCurrentRow(0);
 }
 
 void MainWindow::flagPrincipale() {
@@ -780,8 +971,8 @@ void MainWindow::fileSelectedVue() {
     }
     if (!hasEchantillon(setup_.catalog)) {
         QMessageBox::information(this, tr("Classer la Vue"),
-                                 tr("Le catalogue de TP n'a encore aucun Échantillon où ranger la Vue : complétez-le "
-                                    "(Poste › Modifier le catalogue de TP), puis rechargez-le."));
+                                 tr("Le catalogue de TP n'a aucun Échantillon. Complétez-le (Poste › Modifier le "
+                                    "catalogue de TP), puis rechargez-le."));
         return;
     }
     const std::filesystem::path vue = toPath(item->data(kPathRole).toString());
@@ -831,11 +1022,8 @@ void MainWindow::deleteVue(const std::filesystem::path& vue) {
         }
     }
     QString question = tr("Supprimer la Vue du %1 ?").arg(vueLabel(vue, false));
-    if (principale) {
-        question += tr("\n\nC'est la Vue principale de l'Échantillon : la Fiche du TP ne l'aura plus.");
-    }
-    question += tr("\n\nElle est déplacée, avec ses traitements, dans la Corbeille du dossier des Vues "
-                   "(Poste › Ouvrir le dossier des Vues). Rien n'est effacé : elle peut y être reprise à la main.");
+    if (principale) question += tr("\n\nC'est la Vue principale : la Fiche du TP ne l'aura plus.");
+    question += tr("\n\nElle part dans la Corbeille du dossier des Vues, avec ses traitements. Rien n'est effacé.");
     const auto answer = QMessageBox::question(this, tr("Supprimer la Vue"), question,
                                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (answer != QMessageBox::Yes) return;
@@ -922,7 +1110,7 @@ void MainWindow::calibrateGrossissement() {
     if (const auto existing = setup_.config.calibration(result->grossissement)) {
         const auto answer = QMessageBox::question(
             this, tr("Calibration"),
-            tr("Remplacer la Calibration de %1 (%2 px/µm, image %3x%4) ? Les Vues déjà prises gardent la leur.")
+            tr("Remplacer la Calibration de %1 (%2 px/µm, %3×%4) ? Les Vues déjà prises gardent la leur.")
                 .arg(QString::fromStdString(existing->grossissement))
                 .arg(existing->pixelsPerMicron, 0, 'f', 4)
                 .arg(existing->frameWidth)
@@ -931,8 +1119,7 @@ void MainWindow::calibrateGrossissement() {
     }
     setup_.config.setCalibration(*result);
     if (saveConfig()) {
-        statusBar()->showMessage(tr("Calibration de %1 enregistrée ; les grossissements non calibrés sur la mire en "
-                                    "sont déduits.")
+        statusBar()->showMessage(tr("Calibration de %1 enregistrée. Les autres grossissements en sont déduits.")
                                      .arg(QString::fromStdString(result->grossissement)),
                                  10000);
     }
@@ -1018,7 +1205,7 @@ void MainWindow::searchCameras() {
     if (searching_) return;
     stopCamera();
     searching_ = true;
-    preview_->showMessage(tr("Recherche des caméras…"));
+    preview_->showBusy(tr("Recherche des caméras…"));
     if (setupDialog_) setupDialog_->showMessage(tr("Recherche des caméras…"));
     // ~MainWindow waits for the pool, so `this` outlives the task.
     cameraSearchPool_.start([this] {

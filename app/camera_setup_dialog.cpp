@@ -1,6 +1,7 @@
 #include "camera_setup_dialog.hpp"
 
 #include "preview_widget.hpp"
+#include "theme.hpp"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -9,6 +10,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSignalBlocker>
@@ -82,6 +84,46 @@ QLabel* wrapped(const QString& text) {
     return label;
 }
 
+// A note under a page's controls, quieter than its status.
+QLabel* note(const QString& text) {
+    QLabel* label = wrapped(text);
+    theme::setRole(label, "role", QStringLiteral("muted"));
+    return label;
+}
+
+// Where the wizard is: one segment per step, copper up to the current one.
+class StepStrip : public QWidget {
+public:
+    explicit StepStrip(int count, QWidget* parent = nullptr) : QWidget(parent), count_(count) {
+        setFixedHeight(4);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    void setCurrent(int current) {
+        current_ = current;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent* /*event*/) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        constexpr double gap = 6.0;
+        const double segment = (width() - gap * (count_ - 1)) / count_;
+        for (int i = 0; i < count_; ++i) {
+            const QColor colour =
+                i < current_ ? theme::accent.darker(140) : i == current_ ? theme::accent : theme::border;
+            painter.setBrush(colour);
+            painter.drawRoundedRect(QRectF(i * (segment + gap), 0, segment, height()), 2, 2);
+        }
+    }
+
+private:
+    int count_;
+    int current_ = 0;
+};
+
 } // namespace
 
 CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start, std::vector<std::string> captureApis,
@@ -92,10 +134,12 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
     resize(1280, 720);
 
     preview_ = new PreviewWidget;
-    preview_->showMessage(tr("Ouverture de la caméra…"));
+    preview_->showBusy(tr("Ouverture de la caméra…"));
     liveStatus_ = wrapped(QString());
+    theme::setRole(liveStatus_, "role", QStringLiteral("muted"));
+    stepStrip_ = new StepStrip(PageCount);
     stepTitle_ = new QLabel;
-    stepTitle_->setStyleSheet(QStringLiteral("font-weight: bold; font-size: 13pt;"));
+    theme::setRole(stepTitle_, "role", QStringLiteral("title"));
     pages_ = new QStackedWidget;
 
     // 1. The camera.
@@ -107,10 +151,8 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
         searchStatus_ = wrapped(tr("Recherche des caméras…"));
         searchStatus_->setObjectName(QStringLiteral("searchStatus"));
         auto* layout = new QVBoxLayout(page);
-        layout->addWidget(wrapped(tr("Les caméras branchées sur ce PC, avec leur interface de capture et leur mode par "
-                                     "défaut. Choisissez la Moticam A5, par DirectShow : c'est la seule interface qui "
-                                     "règle sa température de couleur.<br><br>Fermez MotiConnect avant de chercher : une "
-                                     "caméra ne s'ouvre que dans un programme à la fois.")));
+        layout->addWidget(note(tr("Choisissez la Moticam A5 par DirectShow : seule cette interface règle sa "
+                                  "température de couleur. Fermez MotiConnect avant de chercher.")));
         layout->addWidget(cameraList_, 1);
         layout->addWidget(searchStatus_);
         layout->addWidget(search_, 0, Qt::AlignLeft);
@@ -149,8 +191,8 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
         layout->addWidget(granted_);
         layout->addSpacing(12);
         layout->addWidget(calibrations_);
-        layout->addWidget(wrapped(tr("<i>La taille d'image tient les Calibrations : un objectif calibré dans un mode ne "
-                                     "l'est plus dans un autre (ADR 0015).</i>")));
+        layout->addSpacing(12);
+        layout->addWidget(note(tr("Une Calibration ne vaut que pour la taille d'image où elle a été mesurée.")));
         layout->addStretch(1);
         pages_->addWidget(page);
     }
@@ -176,16 +218,15 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
         layout->addSpacing(12);
         layout->addWidget(exposureStatus_);
         layout->addSpacing(12);
-        layout->addWidget(wrapped(tr("Le profil Moticam A5 fixe 7,81 ms (1/128 s) : à x5, l'histogramme est rempli sans "
-                                     "saturer. La luminosité se règle ensuite avec le bouton de la lampe, pour que toutes "
-                                     "les Vues d'une séance soient prises pareil.")));
+        layout->addWidget(note(tr("Profil Moticam A5 : 7,81 ms (1/128 s). Réglez ensuite la luminosité avec la "
+                                  "lampe.")));
         layout->addStretch(1);
         pages_->addWidget(page);
     }
     // 4. Colour temperature.
     {
         auto* page = new QWidget;
-        autoColour_ = new QRadioButton(tr("Automatique (déconseillé : les couleurs dérivent d'une image à l'autre)"));
+        autoColour_ = new QRadioButton(tr("Automatique (déconseillé : les couleurs dérivent)"));
         lockedColour_ = new QRadioButton(tr("Verrouillée :"));
         lockedColour_->setObjectName(QStringLiteral("lockedColour"));
         auto* group = new QButtonGroup(page);
@@ -207,9 +248,8 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
         layout->addSpacing(12);
         layout->addWidget(colourStatus_);
         layout->addSpacing(12);
-        layout->addWidget(wrapped(tr("Le profil Moticam A5 verrouille 5000 K. La teinte verte ou magenta que la "
-                                     "température de couleur ne corrige pas l'est par la référence blanche, à l'étape "
-                                     "suivante.")));
+        layout->addWidget(note(tr("Profil Moticam A5 : 5000 K. La référence blanche, à l'étape suivante, corrige la "
+                                  "teinte restante.")));
         layout->addStretch(1);
         pages_->addWidget(page);
     }
@@ -220,9 +260,8 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
         measureWhite_ = new QPushButton(tr("Mesurer la référence blanche"));
         measureWhite_->setObjectName(QStringLiteral("measureWhite"));
         auto* layout = new QVBoxLayout(page);
-        layout->addWidget(wrapped(tr("La référence blanche corrige les couleurs de ce microscope (ADR 0014). Retirez "
-                                     "l'échantillon, allumez la lampe, regardez un champ vide et uniforme, puis "
-                                     "mesurez.")));
+        layout->addWidget(note(tr("Retirez l'échantillon, allumez la lampe, visez un champ vide et uniforme, puis "
+                                  "mesurez.")));
         layout->addSpacing(12);
         layout->addWidget(whiteStatus_);
         layout->addWidget(measureWhite_, 0, Qt::AlignLeft);
@@ -248,25 +287,34 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
     auto* restore = new QPushButton(tr("Rétablir le profil Moticam A5"));
     restore->setObjectName(QStringLiteral("restoreA5"));
     restore->setToolTip(tr("DirectShow, 3840×2160 MJPG, exposition 7,81 ms, 5000 K. La référence blanche est gardée."));
+    theme::setRole(restore, "variant", QStringLiteral("quiet"));
     auto* cancel = new QPushButton(tr("Annuler"));
-    back_ = new QPushButton(tr("< Précédent"));
-    next_ = new QPushButton(tr("Suivant >"));
+    back_ = new QPushButton(tr("‹ Précédent"));
+    next_ = new QPushButton(tr("Suivant ›"));
     next_->setObjectName(QStringLiteral("nextButton"));
+    theme::setRole(next_, "variant", QStringLiteral("primary"));
     save_ = new QPushButton(tr("Enregistrer"));
     save_->setObjectName(QStringLiteral("saveButton"));
+    theme::setRole(save_, "variant", QStringLiteral("primary"));
     for (QPushButton* button : {restore, cancel, back_, save_}) button->setAutoDefault(false);
     next_->setDefault(true);
 
     auto* left = new QVBoxLayout;
+    left->setSpacing(8);
     left->addWidget(preview_, 1);
     left->addWidget(liveStatus_);
     auto* right = new QVBoxLayout;
+    right->setSpacing(10);
+    right->addWidget(stepStrip_);
+    right->addSpacing(4);
     right->addWidget(stepTitle_);
     right->addWidget(pages_, 1);
     auto* top = new QHBoxLayout;
+    top->setSpacing(20);
     top->addLayout(left, 3);
     top->addLayout(right, 2);
     auto* buttons = new QHBoxLayout;
+    buttons->setSpacing(8);
     buttons->addWidget(restore);
     buttons->addStretch(1);
     buttons->addWidget(cancel);
@@ -274,6 +322,8 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
     buttons->addWidget(next_);
     buttons->addWidget(save_);
     auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(16);
     layout->addLayout(top, 1);
     layout->addLayout(buttons);
 
@@ -340,14 +390,14 @@ CameraSetupDialog::CameraSetupDialog(WorkstationConfig saved, CameraConfig start
 }
 
 void CameraSetupDialog::showMessage(const QString& message) {
-    preview_->showMessage(message);
+    preview_->showBusy(message);  // only "Recherche des caméras…"
 }
 
 void CameraSetupDialog::cameraStarting() {
     report_.reset();
     failure_.clear();
     fps_ = 0.0;
-    preview_->showMessage(tr("Ouverture de la caméra…"));
+    preview_->showBusy(tr("Ouverture de la caméra…"));
     refreshStatus();
 }
 
@@ -393,14 +443,13 @@ void CameraSetupDialog::camerasFound(const std::vector<FoundCamera>& cameras, co
         }
     }
     if (!error.isEmpty()) {
-        searchStatus_->setText(tr("⚠ Recherche impossible : %1").arg(error.toHtmlEscaped()));
+        searchStatus_->setText(theme::statusHtml(tr("⚠ Recherche impossible : %1").arg(error.toHtmlEscaped())));
     } else if (cameras_.empty()) {
-        searchStatus_->setText(tr("⚠ Aucune caméra trouvée. Branchez la Moticam A5, fermez MotiConnect et tout autre "
-                                  "programme qui utilise la caméra, puis « Rechercher à nouveau »."));
+        searchStatus_->setText(theme::statusHtml(
+            tr("⚠ Aucune caméra trouvée. Branchez la Moticam A5, fermez MotiConnect, puis « Rechercher à nouveau ».")));
     } else {
-        searchStatus_->setText(tr("%n caméra(s) trouvée(s). Celle en essai est sélectionnée : cliquez-en une autre pour "
-                                  "l'essayer.",
-                                  nullptr, static_cast<int>(cameras_.size())));
+        searchStatus_->setText(tr("%n caméra(s) trouvée(s). Cliquez-en une pour l'essayer.", nullptr,
+                                  static_cast<int>(cameras_.size())));
     }
     showProposal();
     refreshStatus();
@@ -440,7 +489,8 @@ void CameraSetupDialog::goTo(int page) {
         QT_TR_NOOP("Exposition"), QT_TR_NOOP("Température de couleur"),
         QT_TR_NOOP("Référence blanche"), QT_TR_NOOP("Enregistrer"),
     };
-    stepTitle_->setText(tr("Étape %1 sur %2 : %3").arg(page + 1).arg(int(PageCount)).arg(tr(titles[page])));
+    static_cast<StepStrip*>(stepStrip_)->setCurrent(page);
+    stepTitle_->setText(tr("%1. %2").arg(page + 1).arg(tr(titles[page])));
     back_->setEnabled(page > 0);
     next_->setVisible(page < SavePage);
     save_->setVisible(page == SavePage);
@@ -559,29 +609,27 @@ void CameraSetupDialog::refreshStatus() {
                            .arg(modeText(proposed_.width, proposed_.height, proposed_.pixelFormat),
                                 grantedModeText(*report_));
         if (review.frameSizeAdopted || review.pixelFormatAdopted) {
-            text += tr("<br>⚠ Ce n'est pas le mode demandé : c'est celui que la caméra fournit qui sera enregistré. "
-                       "Essayez l'autre interface de capture, ou un autre mode.");
+            text += tr("<br>⚠ Pas le mode demandé : c'est celui-ci qui sera enregistré. Essayez une autre interface ou un "
+                       "autre mode.");
         } else if (!report_->frameSizeApplied || !report_->pixelFormatApplied) {
-            text += tr("<br>⚠ La caméra n'indique pas tout son mode : impossible de vérifier qu'elle fournit celui "
-                       "demandé.");
+            text += tr("<br>⚠ La caméra n'indique pas tout son mode : vérification impossible.");
         } else {
             text += QStringLiteral(" ✓");
         }
-        granted_->setText(text);
+        granted_->setText(theme::statusHtml(text));
     } else if (!failure_.isEmpty()) {
-        granted_->setText(tr("⚠ La caméra ne s'ouvre pas avec ces réglages :<br>%1").arg(failure_.toHtmlEscaped()));
+        granted_->setText(theme::statusHtml(
+            tr("⚠ La caméra ne s'ouvre pas avec ces réglages :<br>%1").arg(failure_.toHtmlEscaped())));
     } else {
         granted_->setText(tr("Ouverture de la caméra…"));
     }
 
     if (saved_.calibrations.empty()) {
-        calibrations_->setText(tr("Aucun grossissement n'est encore calibré sur ce poste : calibrez-en un sur la mire une "
-                                  "fois la caméra réglée."));
+        calibrations_->setText(tr("Aucun grossissement calibré : calibrez-en un sur la mire une fois la caméra réglée."));
     } else if (!report_) {
         calibrations_->clear();
     } else if (review.frameSizeUnknown) {
-        calibrations_->setText(tr("⚠ La caméra n'indique pas sa taille d'image : impossible de vérifier que les "
-                                  "Calibrations du poste s'y appliquent."));
+        calibrations_->setText(theme::statusHtml(tr("⚠ Taille d'image inconnue : Calibrations non vérifiables.")));
     } else if (review.calibrationsLost()) {
         QStringList lost;
         for (const Calibration& calibration : review.unusableCalibrations) {
@@ -590,12 +638,12 @@ void CameraSetupDialog::refreshStatus() {
                         .arg(calibration.frameWidth)
                         .arg(calibration.frameHeight);
         }
-        calibrations_->setText(tr("⚠ En %1, ces Calibrations ne s'appliquent plus : %2. Les grossissements qui en sont "
-                                  "déduits non plus (ADR 0015). Après l'enregistrement, recalibrez un objectif sur la "
-                                  "mire : les autres en sont déduits.")
-                                   .arg(grantedModeText(*report_), lost.join(QStringLiteral(", "))));
+        calibrations_->setText(theme::statusHtml(
+            tr("⚠ En %1, ces Calibrations ne s'appliquent plus, ni celles qui en sont déduites : %2. Recalibrez un "
+               "objectif sur la mire après l'enregistrement.")
+                .arg(grantedModeText(*report_), lost.join(QStringLiteral(", ")))));
     } else {
-        calibrations_->setText(tr("✓ Les Calibrations du poste s'appliquent dans ce mode."));
+        calibrations_->setText(theme::statusHtml(tr("✓ Les Calibrations du poste s'appliquent dans ce mode.")));
     }
 
     // Exposure and colour temperature: applied or refused, live.
@@ -615,16 +663,15 @@ void CameraSetupDialog::refreshStatus() {
         if (proposed_.whiteBalanceKelvin) {
             colour = report_->whiteBalanceApplied
                          ? tr("✓ Température de couleur verrouillée à %1 K.").arg(*proposed_.whiteBalanceKelvin, 0, 'f', 0)
-                         : tr("⚠ La caméra a refusé la température de couleur de %1 K : les couleurs peuvent dériver "
-                              "d'une image à l'autre.")
+                         : tr("⚠ La caméra a refusé %1 K : les couleurs peuvent dériver.")
                                .arg(*proposed_.whiteBalanceKelvin, 0, 'f', 0);
         } else {
             colour = report_->whiteBalanceApplied ? tr("✓ Balance des blancs automatique.")
                                                   : tr("⚠ La caméra a refusé la balance des blancs automatique.");
         }
     }
-    exposureStatus_->setText(exposure);
-    colourStatus_->setText(colour);
+    exposureStatus_->setText(theme::statusHtml(exposure));
+    colourStatus_->setText(theme::statusHtml(colour));
 
     // The White reference.
     const WhiteBalance& savedGains = saved_.camera.whiteReference;
@@ -632,25 +679,21 @@ void CameraSetupDialog::refreshStatus() {
     if (measuringWhite_) {
         white = tr("Mesure…");
     } else if (whiteMeasured_) {
-        white = tr("✓ Référence blanche mesurée avec ces réglages (%1) : elle sera enregistrée.")
-                    .arg(gainsText(proposed_.whiteReference));
+        white = tr("✓ Référence blanche mesurée (%1) : elle sera enregistrée.").arg(gainsText(proposed_.whiteReference));
     } else if (review.whiteReferenceMissing) {
-        white = tr("Ce microscope n'a pas encore de référence blanche : seule la température de couleur corrige les "
-                   "couleurs. Mesurez-la maintenant.");
+        white = tr("Pas encore de référence blanche sur ce microscope : mesurez-la.");
     } else if (review.whiteReferenceStale) {
-        white = tr("⚠ La référence blanche du poste (%1) a été mesurée avec une autre caméra, exposition ou température "
-                   "de couleur : elle ne corrige plus les couleurs. Mesurez-la à nouveau.")
+        white = tr("⚠ Référence blanche (%1) mesurée avec d'autres réglages : mesurez-la à nouveau.")
                     .arg(gainsText(savedGains));
     } else {
-        white = tr("✓ La référence blanche du poste (%1) reste valable avec ces réglages. Remesurez-la si un champ vide "
-                   "n'apparaît pas neutre.")
+        white = tr("✓ Référence blanche (%1) valable. Remesurez-la si un champ vide n'est pas neutre.")
                     .arg(gainsText(proposed_.whiteReference));
     }
-    whiteStatus_->setText(white);
+    whiteStatus_->setText(theme::statusHtml(white));
     measureWhite_->setEnabled(report_.has_value() && !measuringWhite_);
 
     // What saving means.
-    summary_->setText(summaryHtml(review));
+    summary_->setText(theme::statusHtml(summaryHtml(review)));
     recalibrate_->setVisible(report_.has_value() && review.calibrationsLost());
     save_->setEnabled(report_.has_value() && !searching_ && !measuringWhite_);
 }
@@ -687,7 +730,7 @@ QString CameraSetupDialog::summaryHtml(const CameraSetupReview& review) const {
     } else if (review.whiteReferenceMissing) {
         white = tr("⚠ pas encore mesurée");
     } else if (review.whiteReferenceStale) {
-        white = tr("⚠ mesurée avec d'autres réglages : à remesurer (Poste › Mesurer la référence blanche)");
+        white = tr("⚠ mesurée avec d'autres réglages : à remesurer");
     } else {
         white = tr("inchangée (%1)").arg(gainsText(profile.whiteReference));
     }
@@ -698,15 +741,15 @@ QString CameraSetupDialog::summaryHtml(const CameraSetupReview& review) const {
         for (const Calibration& calibration : review.unusableCalibrations) {
             lost << QString::fromStdString(calibration.grossissement);
         }
-        rows << tr("<b>Calibrations</b> : ⚠ %1 ne s'appliqueront plus, ni les grossissements qui en sont déduits : "
-                   "recalibrez un objectif sur la mire.")
+        rows << tr("<b>Calibrations</b> : ⚠ %1 et les grossissements déduits ne s'appliqueront plus : recalibrez un "
+                   "objectif sur la mire.")
                     .arg(lost.join(QStringLiteral(", ")));
     }
     if (review.exposureRefused || review.whiteBalanceRefused) {
-        rows << tr("<i>Un réglage refusé reste demandé à chaque ouverture de la caméra, et le bandeau le signale.</i>");
+        rows << tr("<i>Un réglage refusé est redemandé à chaque ouverture, et le bandeau le signale.</i>");
     }
     rows << QString();
-    rows << (review.changed ? tr("Enregistrer remplace le profil caméra du poste (workstation.json) et relance l'aperçu.")
+    rows << (review.changed ? tr("Enregistrer remplace le profil caméra du poste.")
                             : tr("Rien n'a changé : c'est déjà le profil caméra du poste."));
     return rows.join(QStringLiteral("<br>"));
 }

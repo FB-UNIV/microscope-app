@@ -1,6 +1,7 @@
 #include "mire_dialog.hpp"
 
 #include "image_view.hpp"
+#include "theme.hpp"
 
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -59,28 +60,37 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     auto* newStill = new QPushButton(tr("Nouvelle image de la mire"));
     save_ = new QPushButton(tr("Enregistrer la Calibration"));
     save_->setEnabled(false);
+    theme::setRole(save_, "variant", QStringLiteral("primary"));
     auto* cancel = new QPushButton(tr("Annuler"));
+    theme::setRole(cancel, "variant", QStringLiteral("quiet"));
 
     auto* form = new QFormLayout;
+    form->setSpacing(8);
     form->addRow(tr("Grossissement"), grossissement_);
     form->addRow(tr("Période de la mire"), pitch_);
     form->addRow(tr("Entre les deux clics"), periods_);
 
-    auto* help = new QLabel(tr("Molette : zoom. Glisser : déplacer. Cliquez un trait de la mire, puis le trait "
-                               "situé autant de périodes plus loin (une période = l'intervalle entre deux traits "
-                               "voisins), le plus loin possible. Recommencez jusqu'à ce que deux lectures "
-                               "s'accordent à 0,25 %.\n\nUn seul objectif suffit : "
-                               "les autres grossissements en sont déduits. Calibrer aussi un autre objectif sur la "
-                               "mire le rend plus précis ; les autres sont alors déduits du dernier calibré."));
+    auto* help = new QLabel(tr("Cliquez un trait de la mire, puis un autre le plus loin possible, et indiquez le "
+                               "nombre de périodes entre les deux. Recommencez jusqu'à ce que deux lectures "
+                               "s'accordent à 0,25 %. Un seul objectif suffit : les autres en sont déduits.\n\n"
+                               "Molette : zoom. Glisser : déplacer."));
     help->setWordWrap(true);
+    theme::setRole(help, "role", QStringLiteral("muted"));
+    theme::setRole(direction_, "role", QStringLiteral("muted"));
+    theme::setRole(status_, "callout", QStringLiteral("note"));
+    auto* readings = new QLabel(tr("Lectures (px/µm)"));
+    theme::setRole(readings, "role", QStringLiteral("section"));
 
     auto* side = new QWidget;
-    side->setFixedWidth(300);
+    side->setFixedWidth(320);
     auto* sideLayout = new QVBoxLayout(side);
+    sideLayout->setContentsMargins(0, 16, 16, 16);
+    sideLayout->setSpacing(10);
     sideLayout->addLayout(form);
     sideLayout->addWidget(help);
     sideLayout->addWidget(direction_);
-    sideLayout->addWidget(new QLabel(tr("Lectures (px/µm)")));
+    sideLayout->addSpacing(4);
+    sideLayout->addWidget(readings);
     sideLayout->addWidget(readingsList_, 1);
     sideLayout->addWidget(status_);
     sideLayout->addWidget(newStill);
@@ -88,6 +98,8 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     sideLayout->addWidget(cancel);
 
     auto* layout = new QHBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);  // the mire edge to edge; the side panel has its own margins
+    layout->setSpacing(16);
     layout->addWidget(view_, 1);
     layout->addWidget(side);
 
@@ -120,12 +132,9 @@ void MireDialog::setStill(const QImage& frame, std::optional<cv::Vec2d> lineNorm
         double tilt = std::atan2((*lineNormal_)[1], (*lineNormal_)[0]) * 180.0 / CV_PI;
         if (tilt > 90.0) tilt -= 180.0;
         if (tilt < -90.0) tilt += 180.0;
-        direction_->setText(tr("Traits détectés, inclinés de %1° : cliquez à n'importe quelle hauteur, seule la "
-                               "distance entre les deux traits compte.")
-                                .arg(tilt, 0, 'f', 1));
+        direction_->setText(tr("Traits inclinés de %1° : cliquez à n'importe quelle hauteur.").arg(tilt, 0, 'f', 1));
     } else {
-        direction_->setText(tr("Direction des traits non trouvée dans l'image : cliquez les deux traits à la même "
-                               "hauteur."));
+        direction_->setText(tr("Direction des traits non trouvée : cliquez les deux traits à la même hauteur."));
     }
     restart();
 }

@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 
+class QAction;
 class QComboBox;
 class QLabel;
 class QListWidget;
@@ -82,6 +83,10 @@ private:
     void refreshCaptureState();
     // The TP's instructions and the listed Vues.
     void refreshVues();
+    // The Vue buttons and menu entries, for the Vue picked in the list.
+    void refreshVueActions();
+    void showShortcuts();
+    void showAbout();
     void loadNextThumbnail();
     // A thumbnail decoded on thumbnailPool_; null when the file can't be read.
     void thumbnailLoaded(const QString& path, const QImage& thumbnail);
@@ -135,6 +140,15 @@ private:
     QPushButton* unsortedButton_ = nullptr;
     QLabel* vuesTitle_ = nullptr;
     QListWidget* vueList_ = nullptr;
+    QLabel* noVues_ = nullptr;  // in the list's place while it is empty
+    QPushButton* openButton_ = nullptr;
+    QPushButton* principaleButton_ = nullptr;
+    QPushButton* fileButton_ = nullptr;
+    QPushButton* removeButton_ = nullptr;
+    QAction* openAction_ = nullptr;
+    QAction* principaleAction_ = nullptr;
+    QAction* fileAction_ = nullptr;
+    QAction* removeAction_ = nullptr;
     QLabel* modeLabel_ = nullptr;
     QLabel* fpsLabel_ = nullptr;
 
