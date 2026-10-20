@@ -17,6 +17,10 @@ namespace {
 // frame shrunk here costs far less than copying and painting it whole.
 const cv::Size kMaxPreviewSize(1920, 1080);
 
+// Between two attempts when the camera sent nothing: a USB hiccup or a
+// stream starting up passes within a few of these.
+constexpr unsigned long kRetryPauseMs = 50;
+
 QString sizeText(int width, int height) {
     return QStringLiteral("%1x%2").arg(width).arg(height);
 }
@@ -96,15 +100,22 @@ void PreviewWorker::run() {
             // check and the store below. While the window still holds the
             // last frame, this one is grabbed — the stream keeps moving and
             // the rate stays true — but not shrunk, balanced or copied.
+            bool delivered = false;
             if (framePending_->load()) {
-                station.dropFrame();
-            } else {
-                const CaptureStation::LivePreview preview = station.grabLivePreview(kMaxPreviewSize);
+                delivered = station.dropFrame();
+            } else if (const auto preview = station.grabLivePreview(kMaxPreviewSize)) {
                 framePending_->store(true);
-                emit frameReady(toQImage(preview.image),
-                                QSize(preview.grabbedSize.width, preview.grabbedSize.height));
+                emit frameReady(toQImage(preview->image),
+                                QSize(preview->grabbedSize.width, preview->grabbedSize.height));
+                delivered = true;
             }
-            ++grabbed;
+            if (delivered) {
+                ++grabbed;
+            } else {
+                // Warm-up or a dropped frame (review H2): try again shortly.
+                // The station throws once too many failed in a row.
+                QThread::msleep(kRetryPauseMs);
+            }
             if (clock.elapsed() >= 1000) {
                 emit fpsMeasured(grabbed * 1000.0 / static_cast<double>(clock.restart()));
                 grabbed = 0;

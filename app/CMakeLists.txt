@@ -34,6 +34,7 @@ qt_add_library(microscope_app_ui STATIC
     preview_worker.hpp
     qt_image.cpp
     qt_image.hpp
+    slot_guard.hpp
     vue_window.cpp
     vue_window.hpp
     wait_cursor.hpp

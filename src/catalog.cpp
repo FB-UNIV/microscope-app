@@ -148,7 +148,7 @@ LoadedCatalog loadCatalog(const std::filesystem::path& path) {
         }
         loaded.catalog = readCatalogFile(path);
     } catch (const std::exception& e) {
-        loaded.error = path.string() + ": " + e.what();
+        loaded.error = path.u8string() + ": " + e.what();
     }
     return loaded;
 }

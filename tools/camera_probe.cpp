@@ -18,9 +18,9 @@
 
 #include "build_version.hpp"
 #include "camera_factory.hpp"
+#include "image_io.hpp"
 
 #include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
 #include <opencv2/videoio.hpp>
 
 #include <chrono>
@@ -209,10 +209,15 @@ int main(int argc, char** argv) {
 
         const cv::Scalar mean = cv::mean(frame);
         const fs::path out = opt.outDir / ("camera_probe_index" + std::to_string(index) + ".png");
-        cv::imwrite(out.string(), frame);
+        std::string saved = out.u8string();
+        try {
+            msapp::writeImage(out, frame, {}, "camera_probe");
+        } catch (const std::exception& e) {
+            saved = std::string("not saved: ") + e.what();
+        }
         std::cout << "  frame " << frame.cols << "x" << frame.rows << " x" << frame.channels()
                   << " channels, mean BGR (" << mean[0] << ", " << mean[1] << ", " << mean[2]
-                  << "), clipped " << clippedPercent(frame) << "% -> " << out.string() << "\n";
+                  << "), clipped " << clippedPercent(frame) << "% -> " << saved << "\n";
         ++working;
     }
 

@@ -3,6 +3,7 @@
 #include "white_reference.hpp"
 
 #include <stdexcept>
+#include <string>
 
 namespace msapp {
 
@@ -18,6 +19,9 @@ CaptureStation::CaptureStation(std::unique_ptr<ICamera> camera, CameraConfig con
 
 ProfileReport CaptureStation::open() {
     camera_->open();
+    // A stream that just started may send empty frames: warm-up allowance.
+    liveFrameSeen_ = false;
+    failedLiveGrabs_ = 0;
     report_ = ProfileReport();
     applyControls();
     // Read the mode back instead of trusting the request: drivers fall back
@@ -59,17 +63,44 @@ bool CaptureStation::isOpen() const {
     return camera_->isOpen();
 }
 
+cv::Mat CaptureStation::grabFrame() {
+    cv::Mat frame = camera_->grab();
+    // ICamera never returns an empty frame; a backend that does anyway must
+    // fail the capture, not store an empty Vue.
+    if (frame.empty()) {
+        throw std::runtime_error("CaptureStation: the " + camera_->backend() + " camera returned an empty frame");
+    }
+    return frame;
+}
+
+std::optional<cv::Mat> CaptureStation::grabLiveFrame() {
+    try {
+        cv::Mat frame = grabFrame();
+        liveFrameSeen_ = true;
+        failedLiveGrabs_ = 0;
+        return frame;
+    } catch (const std::exception& e) {
+        const int allowed = liveFrameSeen_ ? kDroppedGrabs : kWarmUpGrabs;
+        if (++failedLiveGrabs_ < allowed) return std::nullopt;
+        failedLiveGrabs_ = 0;
+        throw std::runtime_error("CaptureStation: no frame from the camera in " + std::to_string(allowed) +
+                                 " grabs in a row" + (liveFrameSeen_ ? "" : " since it opened") + " (" + e.what() +
+                                 ")");
+    }
+}
+
 cv::Mat CaptureStation::grabPreview() {
-    return applyWhiteBalanceGains(camera_->grab(), config_.whiteReference);
+    return applyWhiteBalanceGains(grabFrame(), config_.whiteReference);
 }
 
-CaptureStation::LivePreview CaptureStation::grabLivePreview(cv::Size fitWithin) {
-    const cv::Mat frame = camera_->grab();
-    return {whiteBalancedPreview(frame, config_.whiteReference, fitWithin), frame.size()};
+std::optional<CaptureStation::LivePreview> CaptureStation::grabLivePreview(cv::Size fitWithin) {
+    const std::optional<cv::Mat> frame = grabLiveFrame();
+    if (!frame) return std::nullopt;
+    return LivePreview{whiteBalancedPreview(*frame, config_.whiteReference, fitWithin), frame->size()};
 }
 
-void CaptureStation::dropFrame() {
-    camera_->grab();
+bool CaptureStation::dropFrame() {
+    return grabLiveFrame().has_value();
 }
 
 Vue CaptureStation::capture(const std::filesystem::path& imagePath, const std::optional<Calibration>& calibration) {
@@ -95,7 +126,7 @@ Vue CaptureStation::capture(const std::filesystem::path& imagePath, const std::o
 }
 
 WhiteBalance CaptureStation::calibrateWhiteReference() {
-    config_.whiteReference = computeWhiteReferenceGains(camera_->grab());
+    config_.whiteReference = computeWhiteReferenceGains(grabFrame());
     return config_.whiteReference;
 }
 

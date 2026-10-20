@@ -79,7 +79,7 @@ std::string randomSuffix() {
 }
 
 bool isVueImage(const std::filesystem::path& path) {
-    const std::string extension = toUpperAscii(path.extension().string());
+    const std::string extension = toUpperAscii(path.extension().u8string());
     return extension == ".TIFF" || extension == ".TIF" || extension == ".PNG" || extension == ".JPG" ||
            extension == ".JPEG" || extension == ".BMP";
 }
@@ -180,15 +180,15 @@ void moveVueFiles(const std::filesystem::path& vue, const std::filesystem::path&
     for (std::size_t i = 0; i < moves.size(); ++i) {
         const std::error_code failure = moveFile(moves[i].first, moves[i].second);
         if (!failure) continue;
-        const std::string why = context + ": could not move " + moves[i].first.string() + " to " +
-                                moves[i].second.string() + " (" + failure.message() + ")";
+        const std::string why = context + ": could not move " + moves[i].first.u8string() + " to " +
+                                moves[i].second.u8string() + " (" + failure.message() + ")";
         // Back where they were, so the Vue stays whole in its old folder.
         std::string stranded;
         while (i-- > 0) {
-            if (moveFile(moves[i].second, moves[i].first)) stranded += "\n  " + moves[i].second.string();
+            if (moveFile(moves[i].second, moves[i].first)) stranded += "\n  " + moves[i].second.u8string();
         }
-        if (stranded.empty()) throw std::runtime_error(why + "; the Vue stays in " + from.string());
-        throw std::runtime_error(why + "; these files could not be moved back to " + from.string() +
+        if (stranded.empty()) throw std::runtime_error(why + "; the Vue stays in " + from.u8string());
+        throw std::runtime_error(why + "; these files could not be moved back to " + from.u8string() +
                                  " either:" + stranded);
     }
 }
@@ -255,7 +255,7 @@ std::filesystem::path VueStore::newVuePath(const VueLocation& location) const {
         auto candidate = dir / (utcTimestamp() + "_" + randomSuffix() + kVueExtension);
         if (!std::filesystem::exists(candidate)) return candidate;
     }
-    throw std::runtime_error("VueStore::newVuePath: no free file name in " + dir.string());
+    throw std::runtime_error("VueStore::newVuePath: no free file name in " + dir.u8string());
 }
 
 std::vector<std::filesystem::path> VueStore::listVues(const VueLocation& location) const {
@@ -289,8 +289,8 @@ void VueStore::setPrincipale(const VueLocation& location, const std::filesystem:
     const bool filedHere = isVueImage(vue) && std::filesystem::is_regular_file(vue, error) &&
                            std::filesystem::equivalent(vue.parent_path(), dir, error);
     if (!filedHere) {
-        throw std::invalid_argument("VueStore::setPrincipale: " + vue.string() + " is not a Vue filed in " +
-                                    dir.string());
+        throw std::invalid_argument("VueStore::setPrincipale: " + vue.u8string() + " is not a Vue filed in " +
+                                    dir.u8string());
     }
     detail::writeFileAtomically(dir / kPrincipaleFile, nlohmann::json{{"vue", vue.filename().u8string()}}.dump(2),
                                 "VueStore::setPrincipale");
@@ -308,8 +308,8 @@ std::filesystem::path VueStore::fileVue(const std::filesystem::path& vue, const 
     const std::filesystem::path dir = folder(to);
     const std::filesystem::path from = vue.parent_path();
     if (!isFiledVue(root_, vue)) {
-        throw std::invalid_argument("VueStore::fileVue: " + vue.string() + " is not a Vue filed under " +
-                                    root_.string());
+        throw std::invalid_argument("VueStore::fileVue: " + vue.u8string() + " is not a Vue filed under " +
+                                    root_.u8string());
     }
     std::error_code error;
     if (std::filesystem::equivalent(from, dir, error)) return vue;
@@ -318,7 +318,7 @@ std::filesystem::path VueStore::fileVue(const std::filesystem::path& vue, const 
     std::filesystem::path target = dir / vue.filename();
     // Taken in practice only by a copy of this same Vue.
     for (int attempt = 0; !nameIsFree(dir, target.filename()); ++attempt) {
-        if (attempt == 100) throw std::runtime_error("VueStore::fileVue: no free file name in " + dir.string());
+        if (attempt == 100) throw std::runtime_error("VueStore::fileVue: no free file name in " + dir.u8string());
         target = newVuePath(to).replace_extension(vue.extension());
     }
     moveVueFiles(vue, target, "VueStore::fileVue");
@@ -332,8 +332,8 @@ std::filesystem::path VueStore::corbeille() const {
 
 std::filesystem::path VueStore::deleteVue(const std::filesystem::path& vue) const {
     if (!isFiledVue(root_, vue)) {
-        throw std::invalid_argument("VueStore::deleteVue: " + vue.string() + " is not a Vue filed under " +
-                                    root_.string());
+        throw std::invalid_argument("VueStore::deleteVue: " + vue.u8string() + " is not a Vue filed under " +
+                                    root_.u8string());
     }
     // The same folders under the Corbeille: Unsorted, or the last three
     // (Department, TP, Échantillon) of the Vue's own path.
@@ -349,7 +349,7 @@ std::filesystem::path VueStore::deleteVue(const std::filesystem::path& vue) cons
 
     std::filesystem::path target = dir / vue.filename();
     for (int n = 2; !nameIsFree(dir, target.filename()); ++n) {
-        if (n == 100) throw std::runtime_error("VueStore::deleteVue: no free file name in " + dir.string());
+        if (n == 100) throw std::runtime_error("VueStore::deleteVue: no free file name in " + dir.u8string());
         auto name = vue.stem();
         name += "-" + std::to_string(n);
         name += vue.extension();

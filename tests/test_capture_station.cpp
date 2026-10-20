@@ -7,9 +7,12 @@
 
 #include "capture_station.hpp"
 #include "echelle_treatment.hpp"
+#include "file_replay_camera.hpp"
+#include "image_io.hpp"
 #include "levels_treatment.hpp"
 #include "measurement.hpp"
 #include "vue.hpp"
+#include "vue_store.hpp"
 #include "test_support.hpp"
 
 #include <opencv2/imgcodecs.hpp>
@@ -70,6 +73,38 @@ private:
     cv::Mat frame_;
     bool accepts_;
     std::string format_;
+    bool open_ = false;
+};
+
+// A camera that hands over nothing for a while, then frames again: `empty`
+// grabs return an empty Mat (some UVC drivers while the stream starts),
+// `failing` ones throw as OpenCvCamera does when read() returns no frame.
+class FlakyCamera : public ICamera {
+public:
+    explicit FlakyCamera(cv::Mat frame) : frame_(std::move(frame)) {}
+
+    std::string backend() const override { return "flaky"; }
+    void open() override { open_ = true; }
+    void close() override { open_ = false; }
+    bool isOpen() const override { return open_; }
+    cv::Mat grab() override {
+        if (!open_) throw std::runtime_error("FlakyCamera: not open");
+        if (empty > 0) {
+            --empty;
+            return {};
+        }
+        if (failing > 0) {
+            --failing;
+            throw std::runtime_error("FlakyCamera::grab: device returned no frame");
+        }
+        return frame_.clone();
+    }
+
+    int empty = 0;
+    int failing = 0;
+
+private:
+    cv::Mat frame_;
     bool open_ = false;
 };
 
@@ -248,18 +283,118 @@ int main() {
         station.open();
         station.calibrateWhiteReference();
 
-        const CaptureStation::LivePreview live = station.grabLivePreview(cv::Size(40, 40));
-        check(live.grabbedSize == cv::Size(80, 60), "it reports the frame as grabbed, what a Calibration must match");
-        check(live.image.size() == cv::Size(40, 30), "the image is shrunk to fit the window, aspect ratio kept");
-        const cv::Vec3b px = live.image.at<cv::Vec3b>(5, 5);
+        const auto live = station.grabLivePreview(cv::Size(40, 40));
+        check(live && live->grabbedSize == cv::Size(80, 60),
+              "it reports the frame as grabbed, what a Calibration must match");
+        check(live && live->image.size() == cv::Size(40, 30), "the image is shrunk to fit the window, aspect ratio kept");
+        const cv::Vec3b px = live ? live->image.at<cv::Vec3b>(5, 5) : cv::Vec3b();
         check(std::abs(px[0] - 120) <= 1 && std::abs(px[1] - 120) <= 1 && std::abs(px[2] - 120) <= 1,
               "and white-balanced: the blank field shows neutral");
-        check(station.grabLivePreview(cv::Size(1920, 1080)).image.size() == cv::Size(80, 60),
-              "a frame smaller than the window is not enlarged");
+        const auto unshrunk = station.grabLivePreview(cv::Size(1920, 1080));
+        check(unshrunk && unshrunk->image.size() == cv::Size(80, 60), "a frame smaller than the window is not enlarged");
 
         const int grabs = cam->grabs;
-        station.dropFrame();
-        check(cam->grabs == grabs + 1, "dropFrame() grabs, so the stream keeps moving while the window is busy");
+        check(station.dropFrame() && cam->grabs == grabs + 1,
+              "dropFrame() grabs, so the stream keeps moving while the window is busy");
+    }
+
+    std::cout << "\n== Live preview: an empty or dropped frame costs a frame, not the live view (review H2) ==\n";
+    {
+        auto flaky = std::make_unique<FlakyCamera>(cv::Mat(60, 80, CV_8UC3, kTint));
+        FlakyCamera* cam = flaky.get();
+        CaptureStation station(std::move(flaky), lockedProfile());
+        station.open();
+
+        // Warm-up: some UVC cameras send empty frames while the stream starts.
+        cam->empty = CaptureStation::kWarmUpGrabs - 1;
+        int skipped = 0;
+        while (skipped < CaptureStation::kWarmUpGrabs && !station.grabLivePreview(cv::Size(40, 40))) ++skipped;
+        check(skipped == CaptureStation::kWarmUpGrabs - 1,
+              "after open(), empty frames are skipped until the first one arrives");
+
+        // Mid-session: a USB hiccup, then frames again.
+        cam->failing = CaptureStation::kDroppedGrabs - 1;
+        int dropped = 0;
+        while (dropped < CaptureStation::kDroppedGrabs && !station.grabLivePreview(cv::Size(40, 40))) ++dropped;
+        check(dropped == CaptureStation::kDroppedGrabs - 1, "a few grabs failing in a row are tolerated");
+        cam->empty = 1;
+        check(!station.dropFrame() && station.dropFrame(), "dropFrame() tolerates them too");
+
+        // A camera gone for good: the live view ends with the camera's reason.
+        cam->failing = CaptureStation::kDroppedGrabs;
+        for (int i = 1; i < CaptureStation::kDroppedGrabs; ++i) station.grabLivePreview(cv::Size(40, 40));
+        const std::string why = throwsWith<std::runtime_error>([&] { station.grabLivePreview(cv::Size(40, 40)); });
+        check(why.find("device returned no frame") != std::string::npos,
+              "too many in a row throw, naming the camera's error (the window then says the camera stopped)");
+
+        // Re-opening starts a new warm-up allowance.
+        station.close();
+        station.open();
+        cam->empty = CaptureStation::kWarmUpGrabs - 1;
+        skipped = 0;
+        while (skipped < CaptureStation::kWarmUpGrabs && !station.grabLivePreview(cv::Size(40, 40))) ++skipped;
+        check(skipped == CaptureStation::kWarmUpGrabs - 1, "re-opening allows a new warm-up");
+
+        cam->empty = CaptureStation::kWarmUpGrabs;
+        station.close();
+        station.open();
+        for (int i = 1; i < CaptureStation::kWarmUpGrabs; ++i) station.dropFrame();
+        check(!throwsWith<std::runtime_error>([&] { station.dropFrame(); }).empty(),
+              "a camera that never sends a frame after open() still fails");
+    }
+
+    std::cout << "\n== capture(): an empty frame fails loudly, writing nothing ==\n";
+    {
+        auto flaky = std::make_unique<FlakyCamera>(cv::Mat(60, 80, CV_8UC3, kTint));
+        FlakyCamera* cam = flaky.get();
+        CaptureStation station(std::move(flaky), lockedProfile());
+        station.open();
+        cam->empty = 1;
+        const fs::path imagePath = dir / "vue_empty_frame.png";
+        check(!throwsWith<std::runtime_error>([&] { station.capture(imagePath); }).empty() && !fs::exists(imagePath),
+              "a capture never retries: the student is told, and no empty Vue is stored");
+        cam->empty = 1;
+        check(!throwsWith<std::runtime_error>([&] { station.calibrateWhiteReference(); }).empty(),
+              "nor does the White reference");
+        station.capture(imagePath);
+        check(fs::exists(imagePath), "the next capture, with a frame, is stored");
+    }
+
+    std::cout << "\n== An Échantillon named outside the ANSI code page: capture, list, reload, export (review H1) ==\n";
+    {
+        // γ and α have no byte in the lab PCs' code page (cp1252): through
+        // path::string() and cv::imread/imwrite, every capture, load and
+        // thumbnail of such an Échantillon failed on Windows. Linux passes
+        // either way; the Windows CI job is the one that proves it.
+        const VueStore store(dir / fs::u8path("Vues α+β"));
+        const VueLocation fonte{"Métallurgie", "TP 3 — fontes", "Fonte γ"};
+        const fs::path field = dir / fs::u8path("champ γ.png");
+        const cv::Mat frame(60, 80, CV_8UC3, kTint);
+        writeImage(field, frame, {}, "test");
+        CameraConfig replay;
+        replay.backend = "file";
+        CaptureStation station(std::make_unique<FileReplayCamera>(std::vector<fs::path>{field}), replay);
+        station.open();
+        const fs::path imagePath = store.newVuePath(fonte);
+        const Calibration x10{"x10", 2.5, 80, 60};
+        station.capture(imagePath, x10);
+        check(imagePath.parent_path().filename().u8string() == "Fonte γ" && fs::exists(imagePath),
+              "the Vue is stored in the Échantillon's own folder");
+        const auto listed = store.listVues(fonte);
+        check(listed.size() == 1 && listed.front() == imagePath, "and listed there");
+
+        const Vue reloaded = Vue::load(imagePath);
+        check(cv::norm(reloaded.original(), frame, cv::NORM_INF) == 0, "it reloads bit-exact");
+        check(reloaded.calibration() && reloaded.treatmentCount() == 1 && reloaded.treatment(0).type() == "echelle",
+              "with its Calibration and Échelle from the sidecar");
+        check(!readImage(imagePath, cv::IMREAD_REDUCED_COLOR_4).empty(), "its thumbnail decodes");
+
+        const fs::path exported = imagePath.parent_path() / fs::u8path("Fonte γ — export.png");
+        reloaded.exportRendered(exported);
+        check(cv::norm(readImage(exported, cv::IMREAD_UNCHANGED), reloaded.render(), cv::NORM_INF) == 0,
+              "it exports under a non-ASCII name");
+        const std::string why = throwsWith<std::runtime_error>([&] { station.capture(imagePath); });
+        check(why.find("Fonte γ") != std::string::npos, "an error message names the folder as the student typed it");
     }
 
     std::cout << "\n== capture(): the sidecar records what the camera applied, not what was asked ==\n";

@@ -213,7 +213,7 @@ LoadedWorkstationConfig loadWorkstationConfig(const std::filesystem::path& path)
         loaded.config = readConfigFile(path);
     } catch (const std::exception& e) {
         // Never blocks the app; saveWorkstationConfig() keeps the file aside.
-        loaded.error = path.string() + ": " + e.what();
+        loaded.error = path.u8string() + ": " + e.what();
     }
     return loaded;
 }
