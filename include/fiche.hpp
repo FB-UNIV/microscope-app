@@ -1,7 +1,10 @@
 #pragma once
 
 #include "catalog.hpp"
+#include "vue.hpp"
 #include "vue_store.hpp"
+
+#include <opencv2/core.hpp>
 
 #include <cstddef>
 #include <filesystem>
@@ -12,11 +15,11 @@
 namespace msapp {
 
 // Fiche (CONTEXT.md, ADR 0016): one sheet per TP showing, for each of its
-// Échantillons, the name, the Vue principale rendered with its Treatments,
-// its Grossissement and its Échelle — nothing else — three per A4 page, one
-// per row, so the photos print large enough to read (ADR 0019). Generated
-// as a file first, printed from there (ADR 0010). This is what goes on it
-// and where; drawing the PDF is the app's job (Qt).
+// Échantillons, the name, the Vue principale's original photo with only its
+// Échelle on top (ADR 0022), its Grossissement — nothing else — three per A4
+// page, one per row, so the photos print large enough to read (ADR 0019).
+// Generated as a file first, printed from there (ADR 0010). This is what
+// goes on it and where; drawing the PDF is the app's job (Qt).
 
 struct FicheEntry {
     std::string echantillon;
@@ -28,6 +31,18 @@ struct FicheEntry {
 // The Échantillons of `tp` (in `department`), in catalog order, each with
 // its Vue principale as VueStore records it.
 std::vector<FicheEntry> ficheEntries(const VueStore& store, const std::string& department, const Tp& tp);
+
+// One Vue's photo as the Fiche prints it (ADR 0022): the untouched original
+// with only its Échelle Treatment drawn on top. Levels, the phase map and
+// every other Treatment stay on screen and in exports, never on paper. A Vue
+// with no Échelle — uncalibrated, or calibrated and its Échelle removed —
+// prints its original bare: the bar is not drawn again from its Calibration.
+struct FichePhoto {
+    cv::Mat image;
+    bool echelle = false; // an Échelle is drawn on it
+};
+
+FichePhoto fichePhoto(const Vue& vue);
 
 // A page and its spacing, in millimetres: A4 portrait, three photos per
 // page one under the other, by default (ADR 0019).

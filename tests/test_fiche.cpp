@@ -3,15 +3,21 @@
 //   with its Vue principale, three per A4 page, one under the other, large
 //   enough to read the grains — eight Échantillons print on three pages —
 //   and an Échantillon nobody flagged a Vue principale for shows up as such
-//   instead of being skipped (ADR 0016, ADR 0019).
+//   instead of being skipped (ADR 0016, ADR 0019). Each photo prints as
+//   captured, with its Échelle but without the Levels or phase map set on
+//   screen (ADR 0022).
 
+#include "echelle_treatment.hpp"
 #include "fiche.hpp"
+#include "levels_treatment.hpp"
+#include "phase_overlay_treatment.hpp"
 #include "vue.hpp"
 #include "test_support.hpp"
 
 #include <opencv2/core.hpp>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -26,6 +32,10 @@ bool insidePage(const FicheCell& cell, const FichePage& page) {
     return cell.x >= page.margin - eps && cell.y >= page.margin - eps &&
            cell.x + cell.width <= page.width - page.margin + eps &&
            cell.y + cell.imageHeight + page.captionHeight <= page.height - page.margin + eps;
+}
+
+bool samePixels(const cv::Mat& a, const cv::Mat& b) {
+    return a.size() == b.size() && a.type() == b.type() && cv::norm(a, b, cv::NORM_INF) == 0.0;
 }
 
 } // namespace
@@ -101,6 +111,70 @@ int main() {
         check(entries[0].vue == first.imagePath(), "with its flagged Vue principale");
         check(!entries[1].vue, "an Échantillon with Vues but none flagged has no Vue principale on the Fiche");
         check(!entries[2].vue, "and neither has one with no Vue at all");
+        fs::remove_all(dir);
+    }
+
+    std::cout << "\n== fichePhoto: the original with only its Échelle (ADR 0022) ==\n";
+    {
+        const fs::path dir = fs::temp_directory_path() / "msapp_fiche_photo_test";
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        // A dark phase on the left, a light one on the right: Levels and the
+        // phase map both change every pixel of it.
+        cv::Mat frame(180, 320, CV_8UC3, cv::Scalar::all(60));
+        frame(cv::Rect(160, 0, 160, 180)).setTo(cv::Scalar::all(180));
+        const Calibration x10{"x10", 2.0, 320, 180};
+        const cv::Mat withEchelle = EchelleTreatment(x10).apply(frame);
+
+        // As captured (the Échelle first, ADR 0017), then treated on screen.
+        {
+            Vue vue = Vue::capture(frame, dir / "treated.png", std::nullopt, x10);
+            vue.addTreatment(std::make_unique<EchelleTreatment>(x10));
+            vue.addTreatment(std::make_unique<LevelsTreatment>(40, 200));
+            vue.addTreatment(std::make_unique<PhaseOverlayTreatment>(120));
+        }
+        const Vue treated = Vue::load(dir / "treated.png");
+        const FichePhoto photo = fichePhoto(treated);
+        check(samePixels(photo.image, withEchelle) && photo.echelle,
+              "a treated Vue prints as its original with the Échelle drawn on it");
+        check(photo.image.at<cv::Vec3b>(10, 10) == cv::Vec3b(60, 60, 60) &&
+                  photo.image.at<cv::Vec3b>(10, 300) == cv::Vec3b(180, 180, 180),
+              "neither the Levels nor the phase map are applied: both phases keep their grey");
+        check(!samePixels(treated.render(), withEchelle) && treated.treatmentCount() == 3 &&
+                  samePixels(treated.original(), frame),
+              "on screen the Vue keeps all three Treatments, and its original is untouched");
+
+        // Levels put before the Échelle so the bar keeps its contrast (ADR 0002).
+        {
+            Vue vue = Vue::capture(frame, dir / "levels_first.png", std::nullopt, x10);
+            vue.addTreatment(std::make_unique<LevelsTreatment>(40, 200));
+            vue.addTreatment(std::make_unique<EchelleTreatment>(x10));
+            check(samePixels(fichePhoto(vue).image, withEchelle),
+                  "the order on screen doesn't matter: still the bare original under the bar");
+        }
+
+        {
+            Vue vue = Vue::capture(frame, dir / "echelle_removed.png", std::nullopt, x10);
+            vue.addTreatment(std::make_unique<EchelleTreatment>(x10));
+            vue.addTreatment(std::make_unique<LevelsTreatment>(40, 200));
+            vue.removeTreatment(0);
+            const FichePhoto bare = fichePhoto(vue);
+            check(samePixels(bare.image, frame) && !bare.echelle && vue.calibration(),
+                  "a calibrated Vue whose Échelle was removed prints bare: no bar drawn from its Calibration");
+        }
+
+        {
+            const Vue plain = Vue::capture(frame, dir / "plain.png");
+            const FichePhoto bare = fichePhoto(plain);
+            check(samePixels(bare.image, frame) && !bare.echelle, "a Vue with no Treatment prints its original");
+        }
+        {
+            Vue uncalibrated = Vue::capture(frame, dir / "uncalibrated.png");
+            uncalibrated.addTreatment(std::make_unique<LevelsTreatment>(40, 200));
+            const FichePhoto bare = fichePhoto(uncalibrated);
+            check(samePixels(bare.image, frame) && !bare.echelle,
+                  "an uncalibrated Vue with Levels prints its original, without Échelle");
+        }
         fs::remove_all(dir);
     }
 
