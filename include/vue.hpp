@@ -92,6 +92,14 @@ public:
     void replaceTreatment(std::size_t index, std::unique_ptr<Treatment> t);
     void removeTreatment(std::size_t index);
 
+    // The pipeline as the sidecar records it, [{"type": …, "params": …}, …]:
+    // a snapshot to come back to, for the viewer's undo and redo (#93).
+    nlohmann::json treatmentsJson() const;
+    // Puts back a pipeline treatmentsJson() gave, saved in one write. Throws
+    // like addTreatment(), leaving the pipeline as it was, when a Treatment
+    // can't be rebuilt or can't apply to this photo, or the write fails.
+    void setTreatments(const nlohmann::json& treatments);
+
     // The index-th treatment, in apply order. Throws std::out_of_range.
     const Treatment& treatment(std::size_t index) const { return *treatments_.at(index); }
 

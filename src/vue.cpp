@@ -196,12 +196,35 @@ std::filesystem::path Vue::sidecarPath() const {
     return path;
 }
 
-void Vue::saveSidecar() {
+nlohmann::json Vue::treatmentsJson() const {
     nlohmann::json treatments = nlohmann::json::array();
     for (const auto& t : treatments_) {
         treatments.push_back({{"type", t->type()}, {"params", t->paramsToJson()}});
     }
-    nlohmann::json sidecar = {{"treatments", treatments}};
+    return treatments;
+}
+
+void Vue::setTreatments(const nlohmann::json& treatments) {
+    // Built aside: a pipeline is put back whole or not at all.
+    std::vector<std::unique_ptr<Treatment>> rebuilt;
+    for (const auto& entry : treatments) {
+        auto t = TreatmentFactory::instance().create(entry.at("type").get<std::string>(), entry.at("params"));
+        if (auto why = t->frameMismatch(original_.cols, original_.rows)) {
+            throw std::runtime_error("Vue::setTreatments: " + *why);
+        }
+        rebuilt.push_back(std::move(t));
+    }
+    std::swap(treatments_, rebuilt);
+    try {
+        saveSidecar();
+    } catch (...) {
+        std::swap(treatments_, rebuilt);
+        throw;
+    }
+}
+
+void Vue::saveSidecar() {
+    nlohmann::json sidecar = {{"treatments", treatmentsJson()}};
     if (captureInfo_) {
         sidecar["capture"] = captureInfo_->toJson();
     }
