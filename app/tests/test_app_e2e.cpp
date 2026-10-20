@@ -20,6 +20,7 @@
 #include "vue_store.hpp"
 #include "workstation_config.hpp"
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QDialog>
@@ -28,6 +29,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QtTest>
@@ -178,20 +180,25 @@ void AppE2E::openTheVueMeasureAndAnalyse() {
     QTRY_VERIFY_WITH_TIMEOUT((vueWindow = window_->findChild<VueWindow*>()) != nullptr, 5000);
     QVERIFY(QTest::qWaitForWindowExposed(vueWindow));
 
-    // CALCUL: the phase percentages of the whole photo.
+    // CALCUL, on the Phases tab: the phase percentages of the whole photo.
+    auto* tabs = vueWindow->findChild<QTabWidget*>(QStringLiteral("vueTabs"));
+    auto* phasesPage = vueWindow->findChild<QWidget*>(QStringLiteral("phasesPage"));
     auto* calcul = vueWindow->findChild<QPushButton*>(QStringLiteral("calculButton"));
     auto* phaseResult = vueWindow->findChild<QLabel*>(QStringLiteral("phaseResult"));
-    QVERIFY(calcul != nullptr && phaseResult != nullptr);
+    QVERIFY(tabs != nullptr && phasesPage != nullptr && calcul != nullptr && phaseResult != nullptr);
+    tabs->setCurrentWidget(phasesPage);
     QTest::mouseClick(calcul, Qt::LeftButton);
     QVERIFY2(phaseResult->text().contains(QStringLiteral("Phase sombre")), qPrintable(phaseResult->text()));
 
-    // A length of 100 µm at x10, clicked on the image.
-    auto* lengthTool = vueWindow->findChild<QPushButton*>(QStringLiteral("lengthTool"));
+    // A length of 100 µm at x10, clicked on the image; the tool, in the
+    // toolbar, brings its tab up.
+    auto* lengthTool = vueWindow->findChild<QAbstractButton*>(QStringLiteral("lengthTool"));
     auto* view = vueWindow->findChild<ImageView*>(QStringLiteral("imageView"));
     auto* result = vueWindow->findChild<QLabel*>(QStringLiteral("measureResult"));
     QVERIFY(lengthTool != nullptr && view != nullptr && result != nullptr);
     QVERIFY2(lengthTool->isEnabled(), "a calibrated Vue can be measured");
     QTest::mouseClick(lengthTool, Qt::LeftButton);
+    QCOMPARE(tabs->currentWidget()->objectName(), QStringLiteral("measuresPage"));
     const QPoint from = view->mapFromScene(QPointF(100.0, 200.0));
     const QPoint to = view->mapFromScene(QPointF(100.0 + 100.0 * kX10PxPerMicron, 200.0));
     QVERIFY(view->viewport()->rect().contains(from) && view->viewport()->rect().contains(to));

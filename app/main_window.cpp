@@ -13,6 +13,7 @@
 #include "qt_image.hpp"
 #include "slot_guard.hpp"
 #include "theme.hpp"
+#include "vue_time.hpp"
 #include "vue_window.hpp"
 #include "wait_cursor.hpp"
 
@@ -98,16 +99,6 @@ QStringList grossissementChoices(const WorkstationConfig& config) {
     std::stable_sort(choices.begin(), choices.end(),
                      [&](const QString& a, const QString& b) { return magnification(a) < magnification(b); });
     return choices;
-}
-
-// When the Vue was taken, in local time, from the UTC time a VueStore file
-// name starts with; invalid for any other file.
-QDateTime vueTaken(const std::filesystem::path& vue) {
-    const QString name = toQString(vue.filename());
-    const QDate date = QDate::fromString(name.left(8), QStringLiteral("yyyyMMdd"));
-    const QTime time = QTime::fromString(name.mid(9, 6), QStringLiteral("HHmmss"));
-    if (!date.isValid() || !time.isValid()) return {};
-    return QDateTime(date, time, QTimeZone(0)).toLocalTime();
 }
 
 // "15/10/2026 17:43:53", or the bare name for a file VueStore didn't name.
@@ -517,8 +508,10 @@ void MainWindow::showShortcuts() {
     html += row(tr("Suppr"), tr("Supprimer la Vue"));
     html += QStringLiteral("<tr><td colspan=\"2\" style=\"padding-top:10px\"><b>%1</b></td></tr>")
                 .arg(tr("Dans une Vue").toHtmlEscaped());
-    html += row(tr("Molette"), tr("Zoom"));
+    html += row(tr("Molette, + et −"), tr("Zoom"));
+    html += row(tr("0 / 1"), tr("Toute l'image / 100 %"));
     html += row(tr("Glisser"), tr("Déplacer l'image"));
+    html += row(tr("Ctrl+Z / Ctrl+Y"), tr("Annuler / rétablir un traitement"));
     html += row(tr("Retour arrière"), tr("Annuler le dernier point"));
     html += row(tr("Échap"), tr("Ranger l'outil"));
     html += QStringLiteral("</table>");
@@ -1031,7 +1024,9 @@ void MainWindow::deleteVue(const std::filesystem::path& vue) {
     // Each Treatment is already saved; an open window would save the next
     // one where the Vue no longer is.
     for (VueWindow* window : findChildren<VueWindow*>()) {
-        if (window->vuePath() == vue) window->close();
+        if (window->vuePath() != vue) continue;
+        window->discardPendingChanges();  // the Vue goes: nothing to ask about
+        window->close();
     }
     try {
         store_.deleteVue(vue);

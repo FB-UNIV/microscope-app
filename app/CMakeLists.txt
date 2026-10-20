@@ -28,6 +28,8 @@ qt_add_library(microscope_app_ui STATIC
     histogram_widget.hpp
     image_view.cpp
     image_view.hpp
+    levels_widget.cpp
+    levels_widget.hpp
     preview_widget.cpp
     preview_widget.hpp
     preview_worker.cpp
@@ -37,6 +39,7 @@ qt_add_library(microscope_app_ui STATIC
     slot_guard.hpp
     theme.cpp
     theme.hpp
+    vue_time.hpp
     vue_window.cpp
     vue_window.hpp
     wait_cursor.hpp
@@ -113,6 +116,13 @@ target_link_libraries(test_camera_setup_dialog PRIVATE microscope_app_ui Qt6::Te
 add_test(NAME test_camera_setup_dialog COMMAND test_camera_setup_dialog)
 set_tests_properties(test_camera_setup_dialog PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
 
+# Widget tests of the Vue window (#89, #90, #93): Levels on the histogram,
+# Auto, apply, undo and redo, asking before losing Levels, the live length.
+qt_add_executable(test_vue_window tests/test_vue_window.cpp)
+target_link_libraries(test_vue_window PRIVATE microscope_app_ui Qt6::Test)
+add_test(NAME test_vue_window COMMAND test_vue_window)
+set_tests_properties(test_vue_window PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 60)
+
 # GUI end-to-end: drives the real windows on the replay camera — capture,
 # open the Vue, measure, phase analysis — offscreen. `ctest -L e2e` runs it
 # with the core's end-to-end test.
@@ -122,6 +132,13 @@ target_compile_definitions(test_app_e2e PRIVATE MSAPP_SOURCE_DIR="${PROJECT_SOUR
 add_test(NAME test_app_e2e COMMAND test_app_e2e)
 set_tests_properties(test_app_e2e PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120 LABELS e2e)
 
+# On Windows, QtTest writes its results to the debugger, not to stdout,
+# unless stderr is forced: without this a failing Qt test shows no output
+# in CTest or CI.
+set_property(TEST test_image_view test_camera_setup_dialog test_vue_window test_app_e2e
+             APPEND PROPERTY ENVIRONMENT QT_FORCE_STDERR_LOGGING=1)
+
 # Every test that starts Qt: the sanitizer job runs them without leak checks.
-set_property(TEST microscope_app_launch microscope_app_version test_image_view test_camera_setup_dialog test_app_e2e
+set_property(TEST microscope_app_launch microscope_app_version test_image_view test_camera_setup_dialog test_vue_window
+                  test_app_e2e
              APPEND PROPERTY LABELS gui)

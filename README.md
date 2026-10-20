@@ -150,16 +150,25 @@ previous version.
   *Masquer les Vues* (F9) hides the panel for a bigger live view; the
   toolbars still show the Échantillon and Grossissement, capture works the
   same, and the choice is remembered in `ui.ini` beside `workstation.json`.
-  Double-click opens a Vue: Levels with a live preview, the Échelle,
-  removing a Treatment (all saved in the sidecar at once), *Mesurer une
-  longueur*, *Dureté Vickers* (two diagonals, load selector, HV0.5 by
-  default; the active tool stays pressed and says what to click next,
-  Échap puts it away; every point — a yellow ring — can be dragged
-  afterwards to correct a reading, its value following live, a right-click
-  on one deletes its measurement, and Backspace takes back the last point;
-  the cursor is a crosshair, and dragging elsewhere pans), and
-  *Analyse de phases* (CALCUL, percentages, histogram with
-  the Seuil, the phase map as a Treatment). *Choisir une zone…* (drag a
+  Double-click opens a Vue, titled with its Échantillon and capture time
+  (#89). Above the photo, a toolbar: *Annuler* / *Rétablir* (Ctrl+Z /
+  Ctrl+Y) for every Treatment edit, *Longueur*, *Dureté Vickers* with its
+  load (HV0.5 by default), *Zone*, and zoom (also 0 fit, 1 100 %, + and −
+  on the photo; the cursor's position in px and µm in the status bar).
+  Beside it, one tab per task. **Image**: Levels on the photo's histogram
+  with a black and a white handle, the exact values, *Auto* (0.5 % of the
+  values clipped at each end); a change is a preview, marked *Aperçu non
+  enregistré*, until *Appliquer*, and closing with one pending asks (#93);
+  then the Échelle and the Treatments list (all saved in the sidecar at
+  once). **Mesures**: the reading of the active tool, which stays pressed;
+  over the photo a prompt says what to click next, a dashed line from the
+  first point follows the cursor with the length it would read, and a
+  loupe shows the pixels under it (#90; the mire dialog has the loupe
+  too). Échap puts the tool away; every point — a yellow ring — can be
+  dragged afterwards to correct a reading, its value following live, a
+  right-click on one deletes its measurement, and Backspace takes back the
+  last point; dragging elsewhere pans. **Phases**: CALCUL, percentages,
+  histogram with the Seuil, the phase map as a Treatment. *Zone* (drag a
   rectangle, or click two opposite corners) restricts CALCUL and the map to a zone that
   leaves dust and inclusions out; any zone of at least 5x5 pixels at the
   legacy scale is accepted (no size rule until the teacher sets one, #64),

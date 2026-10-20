@@ -55,6 +55,7 @@ QToolButton { background: transparent; color: @text@; border: 1px solid transpar
 QToolButton:hover { background: @hover@; }
 QToolButton:pressed { background: @pressed@; }
 QToolButton:checked { background: @accentSoft@; border-color: @accentBorder@; }
+QToolButton:disabled { color: @textFaint@; }
 
 QStatusBar { background: @window@; border-top: 1px solid @border@; color: @textMuted@; }
 QStatusBar::item { border: none; }
@@ -118,7 +119,14 @@ QListWidget::item:selected { background: @accentSoft@; color: @text@; }
 QGroupBox { background: @surface@; border: 1px solid @border@; border-radius: 10px; margin-top: 24px; padding: 10px; font-weight: 600; }
 QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 2px; padding: 0 0 6px 0; color: @textMuted@; }
 
+QTabWidget::pane { border: none; border-top: 1px solid @border@; top: -1px; }
+QTabBar { qproperty-drawBase: 0; }
+QTabBar::tab { background: transparent; color: @textMuted@; padding: 8px 16px; border: none; border-bottom: 2px solid transparent; font-weight: 600; }
+QTabBar::tab:hover { color: @text@; }
+QTabBar::tab:selected { color: @text@; border-bottom-color: @accent@; }
+
 QLabel[role="title"] { color: @text@; font-size: 14pt; font-weight: 600; }
+QLabel[role="warning"] { color: @warning@; }
 QLabel[role="section"] { color: @textMuted@; font-weight: 600; }
 QLabel[role="muted"] { color: @textMuted@; }
 QLabel[role="faint"] { color: @textFaint@; }

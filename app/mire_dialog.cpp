@@ -52,6 +52,7 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
                             "5 traits = 4 périodes."));
 
     view_ = new ImageView;
+    view_->setLoupe(true);  // the mire's lines are a few pixels wide: aim on the pixels (#90)
     readingsList_ = new QListWidget;
     direction_ = new QLabel;
     direction_->setWordWrap(true);
@@ -73,7 +74,7 @@ MireDialog::MireDialog(const QStringList& grossissements, const QString& current
     auto* help = new QLabel(tr("Cliquez un trait de la mire, puis un autre le plus loin possible, et indiquez le "
                                "nombre de périodes entre les deux. Recommencez jusqu'à ce que deux lectures "
                                "s'accordent à 0,25 %. Un seul objectif suffit : les autres en sont déduits.\n\n"
-                               "Molette : zoom. Glisser : déplacer."));
+                               "Zoom : molette, ou 0 (toute l'image), 1 (100 %), + et −. Glisser : déplacer."));
     help->setWordWrap(true);
     theme::setRole(help, "role", QStringLiteral("muted"));
     theme::setRole(direction_, "role", QStringLiteral("muted"));

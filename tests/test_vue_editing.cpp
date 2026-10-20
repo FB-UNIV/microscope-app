@@ -13,6 +13,8 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -20,6 +22,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 using namespace msapp;
 using namespace msapp::test;
@@ -191,6 +194,61 @@ int main() {
             return std::string(std::istreambuf_iterator<char>(in), {});
         }();
         check(sidecarAfter == sidecarBefore, "exporting never rewrites the sidecar");
+    }
+
+    std::cout << "\n== Undo and redo: a pipeline snapshot put back whole (#93) ==\n";
+    {
+        Vue vue = Vue::capture(frame, dir / "undo.png", std::nullopt, at80x60);
+        vue.addTreatment(std::make_unique<EchelleTreatment>(at80x60));
+        const nlohmann::json before = vue.treatmentsJson();
+        vue.insertTreatment(0, std::make_unique<LevelsTreatment>(30, 210));
+        const nlohmann::json after = vue.treatmentsJson();
+        check(before.size() == 1 && after.size() == 2 && after[0]["type"] == "levels",
+              "treatmentsJson() is the pipeline as the sidecar records it");
+
+        vue.setTreatments(before);
+        check(vue.treatmentCount() == 1 && vue.treatment(0).type() == "echelle", "undo puts the pipeline back");
+        check(Vue::load(dir / "undo.png").treatmentCount() == 1, "the undone pipeline is what the sidecar holds");
+
+        vue.setTreatments(after);
+        check(vue.treatmentCount() == 2 && levelsBlack(vue, 0) == 30 && Vue::load(dir / "undo.png").treatmentCount() == 2,
+              "redo puts the edit back, saved");
+
+        nlohmann::json otherSize = after;
+        otherSize.push_back({{"type", "echelle"}, {"params", EchelleTreatment({"x40", 2.5, 160, 120}).paramsToJson()}});
+        check(!throwsWith<std::runtime_error>([&] { vue.setTreatments(otherSize); }).empty() && vue.treatmentCount() == 2,
+              "a pipeline with an Échelle of another frame size is refused whole");
+        nlohmann::json unknown = after;
+        unknown.push_back({{"type", "no_such_treatment"}, {"params", nlohmann::json::object()}});
+        check(!throwsWith<std::out_of_range>([&] { vue.setTreatments(unknown); }).empty() && vue.treatmentCount() == 2 &&
+                  Vue::load(dir / "undo.png").treatmentCount() == 2,
+              "an unknown Treatment is refused whole, the sidecar untouched");
+    }
+
+    std::cout << "\n== Auto Levels (#93) ==\n";
+    {
+        cv::Mat ramp(1, 256 * 1000, CV_8UC1);
+        for (int i = 0; i < ramp.cols; ++i) ramp.at<uchar>(0, i) = static_cast<uchar>(i / 1000);
+        const auto rampLevels = autoLevels(levelsHistogram(ramp));
+        check(rampLevels.first == 1 && rampLevels.second == 254,
+              "a ramp leaves its 0.5 % darkest and brightest values out of the stretch");
+
+        cv::Mat twoPhases(10, 10, CV_8UC3, cv::Scalar(50, 50, 50));
+        twoPhases(cv::Rect(0, 0, 10, 5)).setTo(cv::Scalar(200, 200, 200));
+        check(autoLevels(levelsHistogram(twoPhases)) == std::make_pair(50, 200),
+              "two phases: the stretch runs from the darker to the lighter");
+
+        std::uint64_t counted = 0;
+        for (const std::uint64_t count : levelsHistogram(frame)) counted += count;
+        check(counted == 80u * 60u * 3u, "every channel value is counted, as Levels stretch each channel");
+
+        check(autoLevels(levelsHistogram(cv::Mat(8, 8, CV_8UC3, cv::Scalar(120, 120, 120)))) == std::make_pair(120, 121),
+              "a flat photo gets a one-level range, never black >= white");
+        check(autoLevels(levelsHistogram(cv::Mat(8, 8, CV_8UC1, cv::Scalar(255)))) == std::make_pair(254, 255),
+              "a white photo too");
+        check(autoLevels(std::array<std::uint64_t, 256>{}) == std::make_pair(0, 255), "no values: no stretch");
+        check(!throwsWith<std::invalid_argument>([] { levelsHistogram(cv::Mat(4, 4, CV_16UC1)); }).empty(),
+              "a 16-bit image is refused");
     }
 
     fs::remove_all(dir);

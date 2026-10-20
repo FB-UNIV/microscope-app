@@ -39,4 +39,52 @@ std::unique_ptr<Treatment> LevelsTreatment::fromJson(const nlohmann::json& param
                                               params.at("white_point").get<int>());
 }
 
+std::array<std::uint64_t, 256> levelsHistogram(const cv::Mat& image) {
+    if (image.depth() != CV_8U || (image.channels() != 1 && image.channels() != 3)) {
+        throw std::invalid_argument("levelsHistogram: expected an 8-bit image with 1 or 3 channels");
+    }
+    std::array<std::uint64_t, 256> counts{};
+    const int values = image.cols * image.channels();
+    for (int y = 0; y < image.rows; ++y) {
+        const uchar* row = image.ptr<uchar>(y);
+        for (int x = 0; x < values; ++x) ++counts[row[x]];
+    }
+    return counts;
+}
+
+std::pair<int, int> autoLevels(const std::array<std::uint64_t, 256>& histogram, double clip) {
+    std::uint64_t total = 0;
+    for (const std::uint64_t count : histogram) total += count;
+    if (total == 0) return {0, 255};
+    const double cut = clip * static_cast<double>(total);
+    int black = 0;
+    std::uint64_t below = 0;
+    for (int level = 0; level < 256; ++level) {
+        below += histogram[level];
+        if (static_cast<double>(below) > cut) {
+            black = level;
+            break;
+        }
+    }
+    int white = 255;
+    std::uint64_t above = 0;
+    for (int level = 255; level >= 0; --level) {
+        above += histogram[level];
+        if (static_cast<double>(above) > cut) {
+            white = level;
+            break;
+        }
+    }
+    // A flat photo: one level of range, which LevelsTreatment accepts.
+    if (black >= white) {
+        if (black >= 255) {
+            black = 254;
+            white = 255;
+        } else {
+            white = black + 1;
+        }
+    }
+    return {black, white};
+}
+
 } // namespace msapp

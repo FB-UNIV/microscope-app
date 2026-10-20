@@ -60,6 +60,10 @@ private slots:
     void rightClickOnAHandleAsksToRemoveIt();
     void rectangleModeDragReportsTheRectangleInsideTheImage();
     void doubleClickIsTwoClicks();
+    void zoomKeysFitShowActualSizeAndStep();
+    void resizeKeepsTheFitUntilZoomed();
+    void hoverReportsThePointAndTheLoupeFollows();
+    void guideShowsItsLengthUntilMarksAreCleared();
 
 private:
     // Where image pixel `imagePoint` is on the viewport.
@@ -187,6 +191,62 @@ void TestImageView::doubleClickIsTwoClicks() {
     send(viewport(), QEvent::MouseButtonDblClick, at, Qt::LeftButton, Qt::LeftButton);
     send(viewport(), QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton);
     QCOMPARE(clicked.count(), 2);
+}
+
+// #90: 0 fits, 1 shows one image pixel per screen pixel, + and − step.
+void TestImageView::zoomKeysFitShowActualSizeAndStep() {
+    QSignalSpy zoomed(view_, &ImageView::zoomChanged);
+    const double fitted = view_->zoom();
+    QVERIFY2(fitted > 1.5 && fitted < 2.2, qPrintable(QString::number(fitted)));  // 200x150 in 420x320
+
+    QTest::keyClick(view_, Qt::Key_1);
+    QVERIFY(qFuzzyCompare(view_->zoom(), 1.0));
+    QTest::keyClick(view_, Qt::Key_Plus);
+    QVERIFY(qFuzzyCompare(view_->zoom(), 1.25));
+    QTest::keyClick(view_, Qt::Key_Minus);
+    QVERIFY(qFuzzyCompare(view_->zoom(), 1.0));
+    QTest::keyClick(view_, Qt::Key_0);
+    QVERIFY(qFuzzyCompare(view_->zoom(), fitted));
+    QCOMPARE(zoomed.count(), 4);
+    QCOMPARE(zoomed.last().at(0).toDouble(), view_->zoom());
+}
+
+void TestImageView::resizeKeepsTheFitUntilZoomed() {
+    const double fitted = view_->zoom();
+    view_->resize(840, 640);
+    QTRY_VERIFY(view_->zoom() > fitted * 1.5);  // still the whole photo, now bigger
+
+    view_->zoomBy(2.0);
+    const double zoomed = view_->zoom();
+    view_->resize(420, 320);
+    QCoreApplication::processEvents();
+    QCOMPARE(view_->zoom(), zoomed);  // zoomed in: a resize leaves it alone
+}
+
+void TestImageView::hoverReportsThePointAndTheLoupeFollows() {
+    QSignalSpy hovered(view_, &ImageView::hovered);
+    QSignalSpy unhovered(view_, &ImageView::unhovered);
+    view_->setLoupe(true);
+    moveTo(viewport(), onScreen(QPointF(50, 60)), Qt::NoButton);
+    QCOMPARE(hovered.count(), 1);
+    QVERIFY(near(hovered.at(0).at(0).toPointF(), QPointF(50, 60), 1.0));
+    QVERIFY(!view_->grab().isNull());  // paints the loupe over the photo
+
+    view_->scale(0.5, 0.5);  // a margin around the photo
+    QCoreApplication::processEvents();
+    moveTo(viewport(), QPoint(2, 2), Qt::NoButton);
+    QCOMPARE(unhovered.count(), 1);
+}
+
+void TestImageView::guideShowsItsLengthUntilMarksAreCleared() {
+    view_->setGuide(QLineF(QPointF(10, 10), QPointF(60, 10)), QStringLiteral("12.5 µm"));
+    QCOMPARE(view_->guideLabel(), QStringLiteral("12.5 µm"));
+    view_->setPrompt(QStringLiteral("Longueur — point 2/2"));
+    QVERIFY(!view_->grab().isNull());  // paints the prompt
+    view_->clearMarks();
+    QVERIFY(view_->guideLabel().isEmpty());
+    view_->setGuide(std::nullopt);
+    QVERIFY(view_->guideLabel().isEmpty());
 }
 
 QTEST_MAIN(TestImageView)
