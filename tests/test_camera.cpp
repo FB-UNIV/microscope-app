@@ -6,14 +6,17 @@
 
 #include "camera_factory.hpp"
 #include "file_replay_camera.hpp"
+#include "jpeg_frame.hpp"
 #include "opencv_camera.hpp"
 #include "test_support.hpp"
 
+#include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace msapp;
 using namespace msapp::test;
@@ -169,6 +172,43 @@ int main() {
         CameraConfig files;
         files.frames = {dir / "a.png"};
         check(CameraConfig::fromJson(files.toJson()).frames == files.frames, "file-replay frame paths round-trip");
+    }
+
+    std::cout << "\n== JPEG frames read undecoded from an MJPG stream (#76) ==\n";
+    {
+        // Noise, with a restart marker after every MCU: the scan data holds
+        // stuffed FF 00 bytes and FF D0-D7 markers, as a camera's may.
+        cv::Mat noise(64, 64, CV_8UC3);
+        cv::randu(noise, cv::Scalar::all(0), cv::Scalar::all(256));
+        std::vector<unsigned char> jpeg;
+        cv::imencode(".jpg", noise, jpeg, {cv::IMWRITE_JPEG_RST_INTERVAL, 1});
+        const JpegExtent whole = findJpegExtent(jpeg.data(), jpeg.size());
+        check(whole.complete() && whole.end == jpeg.size(), "an encoded JPEG runs from FF D8 to its last byte, FF D9");
+
+        std::vector<unsigned char> padded = jpeg;
+        padded.resize(jpeg.size() + 64, 0);
+        padded.insert(padded.end(), jpeg.end() - 32, jpeg.end());
+        check(findJpegExtent(padded.data(), padded.size()).end == jpeg.size(),
+              "padding after the image is left out, even when it holds an older frame's FF D9");
+
+        const JpegExtent cut = findJpegExtent(jpeg.data(), jpeg.size() - 1);
+        check(cut.startsWithSoi && !cut.complete(), "a frame cut before its FF D9 is not complete");
+
+        // An APP1 segment (where EXIF keeps its thumbnail) holding FF D9.
+        std::vector<unsigned char> withApp1 = {0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x06, 0xFF, 0xD9, 0xFF, 0xD9};
+        withApp1.insert(withApp1.end(), jpeg.begin() + 2, jpeg.end());
+        check(findJpegExtent(withApp1.data(), withApp1.size()).end == withApp1.size(),
+              "an FF D9 inside a segment does not end the image");
+
+        const cv::Mat bgr(4, 6, CV_8UC3, cv::Scalar(10, 20, 30));
+        check(!findJpegExtent(bgr.data, bgr.total() * bgr.elemSize()).startsWithSoi,
+              "decoded BGR pixels are not JPEG");
+        check(!findJpegExtent(nullptr, 0).startsWithSoi && !findJpegExtent(jpeg.data(), 1).startsWithSoi,
+              "an empty or one-byte buffer is not JPEG");
+
+        const cv::Mat half = cv::imdecode(jpeg, cv::IMREAD_REDUCED_COLOR_2);
+        check(half.cols == 32 && half.rows == 32 && half.type() == CV_8UC3,
+              "IMREAD_REDUCED_COLOR_2 decodes straight to half size, the live view's");
     }
 
     fs::remove_all(dir);

@@ -64,7 +64,8 @@ compressed frames, which USB cameras often need to reach full resolution at a us
 frame rate.
 
 All options: `--api`, `--max-index N` (indexes to try, default 4), `--size WxH`,
-`--mjpg`, `--frames N` (frames timed for the fps measurement, default 20),
+`--mjpg`, `--raw-mjpg` (see [Raw MJPG](#raw-mjpg-76) below), `--frames N` (frames
+timed for the fps measurement, default 20),
 `--auto-exposure V`, `--exposure V` (DirectShow: log2 seconds, -7 ≈ 7.8 ms, -8 ≈ 3.9 ms),
 `--wb KELVIN`, `--out-dir DIR`, `--version` (prints the build and exits). Values are
 read back after setting, so the output shows whether the camera accepted them.
@@ -117,6 +118,47 @@ If the `--exposure -9` run's "after request" line still shows the old exposure, 
 camera stayed in auto exposure: retry adding `--auto-exposure 0`, then
 `--auto-exposure 0.25` (backends disagree on the value meaning "manual").
 Send back the five `r2-*.txt` files and the `r2-4k-mjpg` and `r2-exp9` PNGs.
+
+### Raw MJPG (#76)
+
+The live view spends most of its CPU decoding every 4K MJPG frame at full size,
+only to show it at 1920×1080 at most. If the capture API hands over the camera's
+JPEG undecoded, the app can decode it straight at half size: about 24 ms of CPU per
+frame instead of 39 (#76). `--raw-mjpg` checks that: it asks for MJPG with OpenCV's
+`CAP_PROP_CONVERT_RGB` off, says what `read()` returns, and times the reads and the
+two decodes.
+
+OpenCV's DirectShow code decodes MJPG itself whatever `CONVERT_RGB` says, so expect
+*not JPEG* there; its Media Foundation code should return the JPEG. Run both, with a
+sample in focus under the microscope and MotiConnect and the app closed:
+
+```
+.\camera_probe.exe --api dshow --size 3840x2160 --raw-mjpg --frames 60 --out-dir raw-dshow | Tee-Object raw-dshow.txt
+.\camera_probe.exe --api msmf  --size 3840x2160 --raw-mjpg --frames 60 --out-dir raw-msmf  | Tee-Object raw-msmf.txt
+```
+
+When the API returns the JPEG, the A5 prints something like this (numbers
+illustrative), after the usual `default` lines:
+
+```
+  convert_rgb: set to 0 accepted, reads back 0
+  read() returns 1x1048576 CV_8UC1, 1048576 bytes
+  JPEG: FF D8 at byte 0, FF D9 ends it at byte 1048576 of 1048576
+  measured: 60/60 frames in 4.0 s = 15 fps; per frame, read() 66.7 ms, CPU 0.5 ms (whole process)
+  JPEG frames: 60/60 start with FF D8, 60 end with FF D9, 60 decoded
+  decode per frame: full size 31.0 ms -> 3840x2160, half size 24.0 ms -> 1920x1080
+  half-size frame -> raw-msmf\camera_probe_index0_half.png
+```
+
+- **`not JPEG`** instead: that API decoded the stream itself. Its `CPU` per frame is
+  then what that decode costs, the figure to beat.
+- **Fewer frames end with FF D9 than start with FF D8**: some frames arrive truncated.
+- `CPU` counts the whole process, the capture API's own threads included; the
+  `decode` times are on one thread, as the app would decode.
+
+Send back `raw-dshow.txt`, `raw-msmf.txt` and `raw-msmf\camera_probe_index0_half.png`
+(it should look like the live view, at half size). They decide whether the live view
+can take the JPEG through DirectShow, needs Media Foundation for it, or neither.
 
 ## Troubleshooting
 
