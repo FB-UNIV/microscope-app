@@ -30,6 +30,7 @@
 #include <QTimer>
 #include <QtTest>
 
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 
@@ -206,9 +207,14 @@ void TestVueWindow::measuringShowsTheLengthToTheCursor() {
     QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->mapFromScene(QPointF(20, 20)));
     QVERIFY(view->prompt().contains(QStringLiteral("2/2")));
     moveTo(view->viewport(), view->mapFromScene(QPointF(80, 20)), Qt::NoButton);
-    // 60 px at 2 px/µm, to within a screen pixel.
-    QVERIFY2(view->guideLabel().contains(QStringLiteral("µm")) && view->guideLabel().startsWith(QStringLiteral("3")),
-             qPrintable(view->guideLabel()));
+    // 60 px at 2 px/µm: 30 µm, to within a screen pixel (the mouse lands on
+    // whole screen pixels, so 29.9 is as right as 30.1).
+    const QString label = view->guideLabel();
+    bool number = false;
+    const double microns = label.section(QLatin1Char(' '), 0, 0).toDouble(&number);
+    const double tolerance = 1.0 / view->zoom() / 2.0 + 0.01;
+    QVERIFY2(number && label.endsWith(QStringLiteral(" µm")) && std::abs(microns - 30.0) <= tolerance,
+             qPrintable(label));
 
     QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->mapFromScene(QPointF(80, 20)));
     QVERIFY2(view->guideLabel().isEmpty(), "measured: no guide until the next first point");

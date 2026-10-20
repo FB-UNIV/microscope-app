@@ -132,6 +132,12 @@ target_compile_definitions(test_app_e2e PRIVATE MSAPP_SOURCE_DIR="${PROJECT_SOUR
 add_test(NAME test_app_e2e COMMAND test_app_e2e)
 set_tests_properties(test_app_e2e PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen TIMEOUT 120 LABELS e2e)
 
+# On Windows, QtTest writes its results to the debugger, not to stdout,
+# unless stderr is forced: without this a failing Qt test shows no output
+# in CTest or CI.
+set_property(TEST test_image_view test_camera_setup_dialog test_vue_window test_app_e2e
+             APPEND PROPERTY ENVIRONMENT QT_FORCE_STDERR_LOGGING=1)
+
 # Every test that starts Qt: the sanitizer job runs them without leak checks.
 set_property(TEST microscope_app_launch microscope_app_version test_image_view test_camera_setup_dialog test_vue_window
                   test_app_e2e
