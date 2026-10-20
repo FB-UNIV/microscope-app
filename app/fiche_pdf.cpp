@@ -32,6 +32,7 @@ struct Printed {
     QString name;
     QImage photo;          // null: no Vue principale, or it can't be read
     QString grossissement; // empty: uncalibrated
+    bool echelle = false;  // an Échelle is drawn on the photo
     QString problem;       // why there is no photo
 };
 
@@ -53,9 +54,12 @@ QStringList writeFichePdf(const VueStore& store, const std::string& department, 
         } else {
             try {
                 const Vue vue = Vue::load(*entry.vue);
-                const cv::Mat rendered = vue.render();
-                if (aspect <= 0.0) aspect = static_cast<double>(rendered.cols) / rendered.rows;
-                item.photo = toQImage(rendered, printSize);
+                // The original with its Échelle only: Levels and the phase
+                // map stay on screen (ADR 0022).
+                const FichePhoto photo = fichePhoto(vue);
+                if (aspect <= 0.0) aspect = static_cast<double>(photo.image.cols) / photo.image.rows;
+                item.photo = toQImage(photo.image, printSize);
+                item.echelle = photo.echelle;
                 if (const auto& calibration = vue.calibration()) {
                     item.grossissement = QString::fromStdString(calibration->grossissement);
                 }
@@ -109,6 +113,9 @@ QStringList writeFichePdf(const VueStore& store, const std::string& department, 
                 notes << tr("%1 : Vue principale non calibrée, sans Grossissement ni Échelle").arg(item.name);
             } else {
                 captionText += tr(" — Grossissement %1").arg(item.grossissement);
+                // Not drawn again from the Calibration: the Fiche prints what
+                // the Vue carries (ADR 0022).
+                if (!item.echelle) notes << tr("%1 : Vue principale sans Échelle (retirée de la Vue)").arg(item.name);
             }
         } else {
             painter.setPen(QPen(Qt::gray, 3));

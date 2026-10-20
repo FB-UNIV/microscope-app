@@ -96,8 +96,9 @@ public:
     const Treatment& treatment(std::size_t index) const { return *treatments_.at(index); }
 
     // Renders the untouched original with every treatment applied in
-    // order. This is what Measurement, export, and Fiche generation all
-    // read from — none of them ever touch the stored original directly.
+    // order. This is what Measurement and export read from; the Fiche
+    // applies only the Échelle (fichePhoto(), ADR 0022). None of them ever
+    // touch the stored original.
     cv::Mat render() const;
 
     // Exports a flattened copy (issue #28): render() written to `target` as

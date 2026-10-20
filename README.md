@@ -177,12 +177,15 @@ previous version.
   is unflagged, and a window open on it closes. Who may delete is not
   restricted yet.
 - **Fiche menu.** *Générer la Fiche du TP* writes the picked TP's Fiche as
-  an A4 PDF (ADR 0016): each Échantillon's Vue principale with its
-  Treatments and Échelle, its name and Grossissement, three per page, one
-  per row (`layoutFiche()`, ADR 0019: a 16:9 photo prints about 133 × 75
-  mm). An
-  Échantillon without a Vue principale gets an empty frame, and the app
-  lists them before writing. Then open the PDF to print it (ADR 0010).
+  an A4 PDF (ADR 0016): each Échantillon's Vue principale, its name and
+  Grossissement, three per page, one per row (`layoutFiche()`, ADR 0019: a
+  16:9 photo prints about 133 × 75 mm). The photo prints as captured with
+  only its Échelle on top (`fichePhoto()`, ADR 0022): Levels and the phase
+  map stay on screen and in exports. An Échantillon without a Vue
+  principale gets an empty frame, and the app lists them before writing.
+  After writing, it lists what to check, such as a Vue principale whose
+  Échelle was removed (it prints without one). Then open the PDF to print
+  it (ADR 0010).
 - **Poste menu (setup).** *Configurer la caméra* sets up the Camera profile
   without editing a file (#83), the live preview beside every step: the
   cameras found (index, capture API, default mode, like `camera_probe`),
@@ -303,8 +306,9 @@ tests/fixtures/      256×256 crops of legacy views for the phase-analysis parit
      [#14](https://github.com/FB-UNIV/microscope-app/issues/14): after a
      run at a manual exposure (`camera_probe --exposure -9`), the app with
      `null` should put the camera back in auto exposure.
-   - Print a Fiche on the lab printer and check the Échelle bar against
-     the mire on paper.
+   - Reprint a Fiche on the lab printer: the photos carry no Levels or
+     phase map (ADR 0022), and the Échelle bar is still right against the
+     mire on paper.
    - Check a derived Calibration against the mire: with only x5
      calibrated, capture the mire at x10, measure across N periods with
      *Mesurer une longueur* and compare with N × 20 µm (ADR 0020).

@@ -1,4 +1,5 @@
 #include "fiche.hpp"
+#include "echelle_treatment.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -13,6 +14,19 @@ std::vector<FicheEntry> ficheEntries(const VueStore& store, const std::string& d
         entries.push_back({echantillon.name, store.principale({department, tp.name, echantillon.name})});
     }
     return entries;
+}
+
+FichePhoto fichePhoto(const Vue& vue) {
+    FichePhoto photo{vue.original().clone()};
+    // In pipeline order, like render(), but skipping everything that isn't an
+    // Échelle: the bar is drawn where it is on screen, on the bare original.
+    for (std::size_t i = 0; i < vue.treatmentCount(); ++i) {
+        if (const auto* echelle = dynamic_cast<const EchelleTreatment*>(&vue.treatment(i))) {
+            photo.image = echelle->apply(photo.image);
+            photo.echelle = true;
+        }
+    }
+    return photo;
 }
 
 std::vector<FicheCell> layoutFiche(std::size_t count, double imageAspect, const FichePage& page) {

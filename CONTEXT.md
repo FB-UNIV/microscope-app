@@ -73,7 +73,7 @@ Where a deleted Vue goes, with its Treatments: a `Corbeille` folder in the Vue f
 _Avoid_: Trash, Bin (English UI words), Supprimées
 
 **Fiche**:
-A generated document for one TP: for each of its Échantillons, the name, the Vue principale with its Treatments, its Grossissement and the Échelle scale bar (ADR 0016), three per A4 page, one per row (ADR 0019). Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
+A generated document for one TP: for each of its Échantillons, the name, the Vue principale's original photo with only its Échelle scale bar on top, and its Grossissement (ADR 0016, ADR 0022), three per A4 page, one per row (ADR 0019). Levels, the phase map and other Treatments are not printed. Produced on demand for printing/export. Not stored as source of truth itself — Vue + metadata remain canonical, Fiche is a rendered output (mirrors ADR 0003's flatten-on-export pattern).
 _Avoid_: Report (less specific), Print (that's the action, not the artifact)
 
 **Vue principale**:

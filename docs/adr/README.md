@@ -22,9 +22,10 @@ supersedes it, and the later ADR links back. Domain terms are in
 | [0013](0013-moticam-a5-is-uvc.md) | The Moticam A5 is UVC: capture through OpenCV | |
 | [0014](0014-locked-colour-temperature-plus-white-reference.md) | Lock the colour temperature and bake a per-microscope White reference into captures | |
 | [0015](0015-calibration-tied-to-frame-size.md) | A Calibration is tied to its frame size: a mismatch is refused, never rescaled | amended by 0018, 0020 |
-| [0016](0016-fiche-one-sheet-per-tp.md) | A Fiche is one sheet per TP: each Vue principale with its Grossissement and Échelle | layout superseded by 0019 |
+| [0016](0016-fiche-one-sheet-per-tp.md) | A Fiche is one sheet per TP: each Vue principale with its Grossissement and Échelle | layout superseded by 0019; amended by 0022 |
 | [0017](0017-echelle-on-every-calibrated-vue.md) | Every calibrated Vue gets an Échelle; no per-TP setting | |
 | [0018](0018-no-legacy-migration.md) | Nothing is migrated from the legacy app | |
 | [0019](0019-fiche-three-vues-per-page.md) | A Fiche prints three Vues per A4 page, one per row | |
 | [0020](0020-calibrate-one-objective-derive-the-others.md) | Calibrate one objective on the mire; the others are derived from it | |
 | [0021](0021-phase-analysis-at-legacy-scale.md) | Phase analysis runs at the legacy camera's scale; a missing Seuil is reported | |
+| [0022](0022-fiche-prints-the-original-with-its-echelle.md) | A Fiche prints each Vue principale's original photo with only its Échelle | |
