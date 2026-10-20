@@ -1,4 +1,5 @@
 #include "vue.hpp"
+#include "image_io.hpp"
 #include "json_optional.hpp"
 #include "safe_write.hpp"
 #include "treatment_factory.hpp"
@@ -43,7 +44,7 @@ CaptureInfo CaptureInfo::fromJson(const nlohmann::json& j) {
 Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath,
                  std::optional<CaptureInfo> captureInfo, std::optional<Calibration> calibration) {
     if (std::filesystem::exists(imagePath)) {
-        throw std::runtime_error("Vue::capture: " + imagePath.string() +
+        throw std::runtime_error("Vue::capture: " + imagePath.u8string() +
                                   " already exists — Vues are immutable-by-path, "
                                   "generate a fresh unique path instead of reusing one");
     }
@@ -52,9 +53,8 @@ Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath
     if (calibration) {
         calibration->requireFitsFrame(original.cols, original.rows, "Vue::capture");
     }
-    if (!cv::imwrite(imagePath.string(), original)) {
-        throw std::runtime_error("Vue::capture: failed to write " + imagePath.string());
-    }
+    // Through a temp file: an interrupted write never leaves half a photo.
+    writeImage(imagePath, original, {}, "Vue::capture");
 
     Vue vue;
     vue.imagePath_ = imagePath;
@@ -68,9 +68,21 @@ Vue Vue::capture(const cv::Mat& original, const std::filesystem::path& imagePath
 }
 
 Vue Vue::load(const std::filesystem::path& imagePath) {
-    cv::Mat img = cv::imread(imagePath.string(), cv::IMREAD_UNCHANGED);
+    // Unchanged: the original exactly as stored, alpha included.
+    cv::Mat img = readImage(imagePath, cv::IMREAD_UNCHANGED);
     if (img.empty()) {
-        throw std::runtime_error("Vue::load: failed to read " + imagePath.string());
+        throw std::runtime_error("Vue::load: failed to read " + imagePath.u8string());
+    }
+    // Every Treatment works on 8 bits, as the camera delivers. A 16-bit TIFF
+    // from another program, dropped in an Échantillon folder, opens scaled
+    // to 8 bits (its file untouched); any other depth is refused here
+    // rather than failing in every render (review H3).
+    if (img.depth() == CV_16U) {
+        img.convertTo(img, CV_8U, 255.0 / 65535.0);
+    } else if (img.depth() != CV_8U) {
+        throw std::runtime_error("Vue::load: " + imagePath.u8string() +
+                                 " is not an 8-bit or 16-bit image (OpenCV depth " + std::to_string(img.depth()) +
+                                 "); only those open as Vues");
     }
 
     Vue vue;
@@ -86,7 +98,12 @@ void Vue::addTreatment(std::unique_ptr<Treatment> t) {
         throw std::runtime_error("Vue::addTreatment: " + *why);
     }
     treatments_.push_back(std::move(t));
-    saveSidecar();
+    try {
+        saveSidecar();
+    } catch (...) {
+        treatments_.pop_back();
+        throw;
+    }
 }
 
 namespace {
@@ -151,13 +168,13 @@ cv::Mat Vue::render() const {
 }
 
 void Vue::exportRendered(const std::filesystem::path& target) const {
-    std::string extension = target.extension().string();
+    std::string extension = target.extension().u8string();
     for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     std::vector<int> params;
     if (extension == ".jpg" || extension == ".jpeg") {
         params = {cv::IMWRITE_JPEG_QUALITY, 95};
     } else if (extension != ".png" && extension != ".tif" && extension != ".tiff") {
-        throw std::invalid_argument("Vue::exportRendered: " + target.string() +
+        throw std::invalid_argument("Vue::exportRendered: " + target.u8string() +
                                     ": export as .png, .tif, .tiff, .jpg or .jpeg");
     }
     // The stored photo and its sidecar are never overwritten (ADR 0003).
@@ -165,21 +182,12 @@ void Vue::exportRendered(const std::filesystem::path& target) const {
     for (const auto& own : {imagePath_, sidecarPath()}) {
         if (std::filesystem::exists(target, error) && std::filesystem::exists(own, error) &&
             std::filesystem::equivalent(target, own, error)) {
-            throw std::invalid_argument("Vue::exportRendered: " + target.string() +
+            throw std::invalid_argument("Vue::exportRendered: " + target.u8string() +
                                         " is this Vue's own file; export to another name");
         }
     }
 
-    // <stem>.tmp<ext>: OpenCV picks the format from the extension.
-    auto temp = target;
-    temp.replace_extension();
-    temp += ".tmp";
-    temp += target.extension();
-    if (!cv::imwrite(temp.string(), render(), params)) {
-        std::filesystem::remove(temp, error);
-        throw std::runtime_error("Vue::exportRendered: failed to write " + target.string());
-    }
-    std::filesystem::rename(temp, target);
+    writeImage(target, render(), params, "Vue::exportRendered");
 }
 
 std::filesystem::path Vue::sidecarPath() const {
@@ -251,7 +259,7 @@ void Vue::loadSidecarIfPresent() {
     } catch (const std::exception& e) {
         // Losing the sidecar never loses the photo (ADR 0003): load it bare
         // and report why. The file is left as is; saveSidecar() sets it aside.
-        sidecarError_ = path.string() + ": " + e.what();
+        sidecarError_ = path.u8string() + ": " + e.what();
         setAsideSuffix_ = ".unreadable";
         return;
     }
@@ -280,7 +288,7 @@ void Vue::loadSidecarIfPresent() {
         }
     }
     if (!dropped.empty()) {
-        sidecarError_ = path.string() + ": " + dropped;
+        sidecarError_ = path.u8string() + ": " + dropped;
         setAsideSuffix_ = ".mismatched";
     }
     treatments_ = std::move(usable);

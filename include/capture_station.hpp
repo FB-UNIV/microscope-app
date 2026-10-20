@@ -54,15 +54,29 @@ public:
     // 1920x1080, 40 % less CPU per frame than shrinking grabPreview()
     // (docs/reviews/2026-10-19-performance-and-quality-review.md, §1.1).
     // Captures never go through here.
+    //
+    // A camera that hands over nothing for a moment costs a frame, not the
+    // live view (review H2): UVC cameras send empty frames while the stream
+    // starts up, and a USB hiccup drops one. A failed grab returns nullopt —
+    // pause a little and call again — until kWarmUpGrabs in a row have
+    // failed before the first frame since open(), or kDroppedGrabs in a row
+    // after it: then it throws std::runtime_error. capture() and
+    // calibrateWhiteReference() never retry: they fail loudly.
     struct LivePreview {
         cv::Mat image;
         cv::Size grabbedSize;  // the frame as grabbed: what a Calibration must match
     };
-    LivePreview grabLivePreview(cv::Size fitWithin);
+    std::optional<LivePreview> grabLivePreview(cv::Size fitWithin);
 
     // Grabs a frame and throws it away, keeping the stream moving while the
-    // window has not shown the previous one yet.
-    void dropFrame();
+    // window has not shown the previous one yet. A failed grab counts as in
+    // grabLivePreview(): false, or a throw once too many failed in a row.
+    bool dropFrame();
+
+    // Failed live grabs tolerated in a row, the last one throwing:
+    // tools/camera_probe.cpp tries 10 times for the first frame too.
+    static constexpr int kWarmUpGrabs = 10;
+    static constexpr int kDroppedGrabs = 5;
 
     // Grabs a frame, bakes the White reference in, and saves it as a new
     // immutable Vue whose sidecar records how it was captured — the settings
@@ -86,6 +100,13 @@ private:
     std::unique_ptr<ICamera> camera_;
     CameraConfig config_;
     ProfileReport report_;
+    bool liveFrameSeen_ = false;  // since the last open()
+    int failedLiveGrabs_ = 0;     // in a row
+
+    // camera_->grab(), an empty frame refused with std::runtime_error.
+    cv::Mat grabFrame();
+    // grabFrame() for the live view: nullopt while failures are tolerated.
+    std::optional<cv::Mat> grabLiveFrame();
 };
 
 } // namespace msapp

@@ -5,6 +5,7 @@
 //   once in the sidecar, never touching the stored photo (ADR 0002, 0003).
 
 #include "echelle_treatment.hpp"
+#include "image_io.hpp"
 #include "levels_treatment.hpp"
 #include "phase_overlay_treatment.hpp"
 #include "vue.hpp"
@@ -107,6 +108,49 @@ int main() {
                        .empty() &&
                   vue.treatmentCount() == 2 && vue.treatment(1).type() == "phase_overlay",
               "insert: the new Treatment is taken out again");
+        blockNextSave();
+        check(!throwsWith<std::runtime_error>([&] { vue.addTreatment(std::make_unique<LevelsTreatment>(5, 6)); })
+                       .empty() &&
+                  vue.treatmentCount() == 2 && vue.treatment(1).type() == "phase_overlay",
+              "add: the new Treatment is taken out again, not shown and saved by the next edit");
+        vue.removeTreatment(1);
+        const Vue reloaded = Vue::load(dir / "fail.png");
+        check(reloaded.treatmentCount() == 1 && reloaded.treatment(0).type() == "levels",
+              "the next save holds only what was saved, never the refused Treatment");
+    }
+
+    std::cout << "\n== Images are written whole (ADR 0004) ==\n";
+    {
+        // A folder where the write puts its temp file makes it fail.
+        fs::create_directory(dir / "interrupted.png.tmp");
+        check(!throwsWith<std::runtime_error>([&] { Vue::capture(frame, dir / "interrupted.png"); }).empty() &&
+                  !fs::exists(dir / "interrupted.png"),
+              "a capture whose write fails leaves no half photo where the Vue would be");
+        fs::remove_all(dir / "interrupted.png.tmp");
+        Vue::capture(frame, dir / "interrupted.png");
+        check(cv::norm(Vue::load(dir / "interrupted.png").original(), frame, cv::NORM_INF) == 0 &&
+                  !fs::exists(dir / "interrupted.png.tmp"),
+              "the same capture then succeeds, no temp file left behind");
+    }
+
+    std::cout << "\n== Load: an image that isn't 8-bit (review H3) ==\n";
+    {
+        // A 16-bit TIFF from another program, dropped in an Échantillon folder.
+        const cv::Mat deep(60, 80, CV_16UC3, cv::Scalar(0, 32896, 65535));
+        writeImage(dir / "deep.tif", deep, {}, "test");
+        Vue vue = Vue::load(dir / "deep.tif");
+        check(vue.original().type() == CV_8UC3 && vue.original().at<cv::Vec3b>(0, 0) == cv::Vec3b(0, 128, 255),
+              "a 16-bit image opens scaled to 8 bits, the full range kept");
+        vue.addTreatment(std::make_unique<LevelsTreatment>(20, 200));
+        vue.addTreatment(std::make_unique<PhaseOverlayTreatment>(100));
+        check(vue.render().type() == CV_8UC3, "its Treatments render instead of throwing");
+        check(readImage(dir / "deep.tif", cv::IMREAD_UNCHANGED).depth() == CV_16U, "its file stays as it was");
+
+        const cv::Mat floats(60, 80, CV_32FC1, cv::Scalar(0.5));
+        writeImage(dir / "float.tif", floats, {}, "test");
+        const std::string why = throwsWith<std::runtime_error>([&] { Vue::load(dir / "float.tif"); });
+        check(!why.empty() && why.find("float.tif") != std::string::npos,
+              "any other depth is refused when the Vue opens, naming the file");
     }
 
     std::cout << "\n== Export a flattened copy (#28) ==\n";
@@ -128,7 +172,11 @@ int main() {
         vue.exportRendered(dir / "copy.tiff");
         check(!cv::imread((dir / "copy.JPG").string()).empty() && !cv::imread((dir / "copy.tiff").string()).empty(),
               "JPEG and TIFF exports are written too");
-        check(!fs::exists(dir / "copy.tmp.png") && !fs::exists(dir / "copy.tmp.JPG"), "no temp file left behind");
+        check(!fs::exists(dir / "copy.png.tmp") && !fs::exists(dir / "copy.JPG.tmp"), "no temp file left behind");
+        fs::create_directory(dir / "blocked.png.tmp");
+        check(!throwsWith<std::runtime_error>([&] { vue.exportRendered(dir / "blocked.png"); }).empty() &&
+                  !fs::exists(dir / "blocked.png"),
+              "a failed export leaves no half image behind");
 
         check(!throwsWith<std::invalid_argument>([&] { vue.exportRendered(dir / "export.png"); }).empty() &&
                   !throwsWith<std::invalid_argument>([&] { vue.exportRendered(dir / "." / "export.png"); }).empty(),

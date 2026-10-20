@@ -40,8 +40,9 @@ struct CaptureInfo {
 // loaded or rendered — never baked into the stored file.
 class Vue {
 public:
-    // Captures a new Vue: writes `original` unmodified to `imagePath` and
-    // returns a Vue with an empty treatment stack. Fails (throws) if
+    // Captures a new Vue: writes `original` unmodified to `imagePath`
+    // (through a temp file, so never half a photo) and returns a Vue with
+    // an empty treatment stack. Fails (throws) if
     // `imagePath` already exists — Vues are immutable-by-path (see the
     // race/overwrite discussion behind ADR 0004); callers must generate a
     // fresh unique path per capture, never reuse one.
@@ -64,6 +65,9 @@ public:
     // at another frame size than the image costs only itself (ADR 0015): it
     // is dropped and named in sidecarError(), while the photo, the other
     // treatments and the capture info load. Only an unreadable image throws.
+    // Treatments work on 8 bits: a 16-bit image (a TIFF from another
+    // program) loads scaled to 8 bits, its file untouched; any other depth
+    // throws std::runtime_error.
     static Vue load(const std::filesystem::path& imagePath);
 
     // Appends a treatment to the pipeline and persists the updated sidecar
@@ -73,7 +77,8 @@ public:
     // first kept aside as sidecarPath() + ".unreadable" or ".mismatched"
     // rather than overwritten (ADR 0004). Throws std::runtime_error, saving
     // nothing, for a treatment that can't apply to this image's frame size
-    // (an Échelle measured at another one, ADR 0015).
+    // (an Échelle measured at another one, ADR 0015). When the write fails,
+    // the treatment is taken out again and the error rethrown.
     void addTreatment(std::unique_ptr<Treatment> t);
 
     // Editing the pipeline (ADR 0002: re-orderable, undo-able), e.g. Levels
@@ -96,8 +101,8 @@ public:
     cv::Mat render() const;
 
     // Exports a flattened copy (issue #28): render() written to `target` as
-    // PNG, TIFF or JPEG (by its extension; JPEG at quality 95), through a
-    // temp file so a failed write never leaves half an image. Saving and
+    // PNG, TIFF or JPEG (by its extension; JPEG at quality 95), through
+    // `target` + ".tmp" so a failed write never leaves half an image. Saving and
     // exporting stay different actions (ADR 0003): throws
     // std::invalid_argument, writing nothing, when `target` is this Vue's
     // own photo or sidecar or has another extension, and std::runtime_error
