@@ -6,7 +6,7 @@
 // docs/hardware/camera-probe.md.
 //
 //   camera_probe [--api auto|dshow|msmf|v4l2] [--max-index N]
-//                [--size WIDTHxHEIGHT] [--mjpg] [--frames N]
+//                [--size WIDTHxHEIGHT] [--mjpg] [--raw-mjpg] [--frames N]
 //                [--auto-exposure V] [--exposure V] [--wb KELVIN]
 //                [--out-dir DIR]
 //   camera_probe --version
@@ -14,23 +14,41 @@
 // Exposure values are passed to OpenCV as-is: with DirectShow they are log2
 // seconds (-7 = 1/128 s ~ 7.8 ms); auto-exposure semantics vary by backend.
 //
+// --raw-mjpg (issue #76) asks for MJPG with CAP_PROP_CONVERT_RGB off, then
+// reports whether read() hands over the camera's JPEG undecoded, what a read
+// costs, and how long decoding that JPEG takes at full and at half size. It
+// saves the half-size frame instead of the full one.
+//
 // Exit code 0 when at least one camera delivered a frame, 1 otherwise.
 
 #include "build_version.hpp"
 #include "camera_factory.hpp"
 #include "image_io.hpp"
+#include "jpeg_frame.hpp"
 
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/videoio.hpp>
 
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -41,6 +59,7 @@ struct Options {
     int maxIndex = 4;
     cv::Size size;
     bool mjpg = false;
+    bool rawMjpg = false;
     int frames = 20;
     std::optional<double> autoExposure;
     std::optional<double> exposure;
@@ -87,6 +106,8 @@ Options parse(int argc, char** argv) {
             o.size = {w, h};
         } else if (arg == "--mjpg") {
             o.mjpg = true;
+        } else if (arg == "--raw-mjpg") {
+            o.rawMjpg = true;
         } else if (arg == "--frames") {
             o.frames = std::stoi(value());
             if (o.frames < 1) throw std::invalid_argument("--frames must be >= 1");
@@ -136,6 +157,125 @@ double clippedPercent(const cv::Mat& frame) {
     return 100.0 * cv::countNonZero(maxChannel >= 250) / static_cast<double>(frame.total());
 }
 
+// CPU time the whole process has used so far, every thread included: a
+// capture backend decodes on threads of its own. std::clock() counts that
+// on Linux, but wall time with MSVC.
+double processCpuSeconds() {
+#ifdef _WIN32
+    FILETIME created, exited, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
+    const auto seconds = [](const FILETIME& t) {  // FILETIME counts 100 ns
+        return static_cast<double>((static_cast<unsigned long long>(t.dwHighDateTime) << 32) | t.dwLowDateTime) * 1e-7;
+    };
+    return seconds(kernel) + seconds(user);
+#else
+    return static_cast<double>(std::clock()) / CLOCKS_PER_SEC;
+#endif
+}
+
+double secondsSince(std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
+std::string milliseconds(double seconds) {
+    char text[32];
+    std::snprintf(text, sizeof text, "%.1f ms", 1000.0 * seconds);
+    return text;
+}
+
+std::size_t byteCount(const cv::Mat& m) {
+    return m.total() * m.elemSize();
+}
+
+// A frame's bytes read as a JPEG, whatever shape the backend gave them
+// (Media Foundation hands a raw buffer over as one row of CV_8UC1).
+msapp::JpegExtent jpegExtentOf(const cv::Mat& frame) {
+    if (frame.empty() || !frame.isContinuous()) return {};
+    return msapp::findJpegExtent(frame.data, byteCount(frame));
+}
+
+// --raw-mjpg, after the first frame came: what read() returns with
+// CONVERT_RGB off, what a read costs, and what decoding the JPEG costs.
+void reportRawMjpg(cv::VideoCapture& cap, const cv::Mat& first, const Options& opt, int index) {
+    std::cout << "  read() returns " << first.rows << "x" << first.cols << " " << cv::typeToString(first.type())
+              << ", " << byteCount(first) << " bytes\n";
+    const msapp::JpegExtent extent = jpegExtentOf(first);
+    if (!extent.startsWithSoi) {
+        std::cout << "  not JPEG: no FF D8 at byte 0, so " << cap.getBackendName()
+                  << " decoded the stream itself and CONVERT_RGB off changed nothing\n";
+    } else if (!extent.complete()) {
+        std::cout << "  JPEG: FF D8 at byte 0, but no FF D9: the frame is truncated\n";
+    } else {
+        std::cout << "  JPEG: FF D8 at byte 0, FF D9 ends it at byte " << extent.end << " of " << byteCount(first)
+                  << "\n";
+    }
+
+    // All the reads first, the decodes after: decoding between reads would
+    // eat into the frame interval that read() waits out.
+    std::vector<cv::Mat> jpegs;
+    int delivered = 0;
+    const double cpuStart = processCpuSeconds();
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < opt.frames; ++i) {
+        cv::Mat frame;  // a new buffer each time, so it is kept without a copy
+        if (!cap.read(frame) || frame.empty()) continue;
+        ++delivered;
+        // Only the first two bytes here: walking the whole buffer would
+        // count towards the read's CPU.
+        if (frame.isContinuous() && byteCount(frame) >= 2 && frame.data[0] == 0xFF && frame.data[1] == 0xD8) {
+            jpegs.push_back(frame);
+        }
+    }
+    const double seconds = secondsSince(start);
+    const double cpuSeconds = processCpuSeconds() - cpuStart;
+    std::cout << "  measured: " << delivered << "/" << opt.frames << " frames in " << seconds << " s = "
+              << (seconds > 0 ? delivered / seconds : 0.0) << " fps";
+    if (delivered > 0) {
+        std::cout << "; per frame, read() " << milliseconds(seconds / delivered) << ", CPU "
+                  << milliseconds(cpuSeconds / delivered) << " (whole process)";
+    }
+    std::cout << "\n";
+    if (jpegs.empty()) return;
+
+    int complete = 0;
+    int decoded = 0;
+    double fullSeconds = 0.0;
+    double halfSeconds = 0.0;
+    cv::Size fullSize;
+    cv::Mat half;
+    for (const cv::Mat& frame : jpegs) {
+        const msapp::JpegExtent e = jpegExtentOf(frame);
+        if (!e.complete()) continue;
+        ++complete;
+        const cv::Mat jpeg(1, static_cast<int>(e.end), CV_8UC1, frame.data);  // without what follows FF D9
+        auto t = std::chrono::steady_clock::now();
+        const cv::Mat f = cv::imdecode(jpeg, cv::IMREAD_COLOR);
+        fullSeconds += secondsSince(t);
+        t = std::chrono::steady_clock::now();
+        const cv::Mat h = cv::imdecode(jpeg, cv::IMREAD_REDUCED_COLOR_2);
+        halfSeconds += secondsSince(t);
+        if (f.empty() || h.empty()) continue;
+        ++decoded;
+        fullSize = f.size();
+        half = h;
+    }
+    std::cout << "  JPEG frames: " << jpegs.size() << "/" << delivered << " start with FF D8, " << complete
+              << " end with FF D9, " << decoded << " decoded\n";
+    if (decoded == 0) return;
+    std::cout << "  decode per frame: full size " << milliseconds(fullSeconds / complete) << " -> " << fullSize.width
+              << "x" << fullSize.height << ", half size " << milliseconds(halfSeconds / complete) << " -> "
+              << half.cols << "x" << half.rows << "\n";
+
+    const fs::path out = opt.outDir / ("camera_probe_index" + std::to_string(index) + "_half.png");
+    std::string saved = out.u8string();
+    try {
+        msapp::writeImage(out, half, {}, "camera_probe");
+    } catch (const std::exception& e) {
+        saved = std::string("not saved: ") + e.what();
+    }
+    std::cout << "  half-size frame -> " << saved << "\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -147,7 +287,8 @@ int main(int argc, char** argv) {
     } catch (const std::exception& e) {
         std::cerr << "camera_probe: " << e.what() << "\n"
                   << "usage: camera_probe [--api auto|dshow|msmf|v4l2] [--max-index N] [--size WIDTHxHEIGHT] "
-                     "[--mjpg] [--frames N] [--auto-exposure V] [--exposure V] [--wb KELVIN] [--out-dir DIR]\n"
+                     "[--mjpg] [--raw-mjpg] [--frames N] [--auto-exposure V] [--exposure V] [--wb KELVIN] "
+                     "[--out-dir DIR]\n"
                      "       camera_probe --version\n";
         return 2;
     }
@@ -172,12 +313,17 @@ int main(int argc, char** argv) {
         printMode("default", cap);
         printControls("default controls", cap);
 
-        if (opt.mjpg) cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+        if (opt.mjpg || opt.rawMjpg) cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
         if (!opt.size.empty()) {
             cap.set(cv::CAP_PROP_FRAME_WIDTH, opt.size.width);
             cap.set(cv::CAP_PROP_FRAME_HEIGHT, opt.size.height);
         }
-        if (opt.mjpg || !opt.size.empty()) printMode("after request", cap);
+        if (opt.rawMjpg) {
+            const bool accepted = cap.set(cv::CAP_PROP_CONVERT_RGB, 0);
+            std::cout << "  convert_rgb: set to 0 " << (accepted ? "accepted" : "refused") << ", reads back "
+                      << cap.get(cv::CAP_PROP_CONVERT_RGB) << "\n";
+        }
+        if (opt.mjpg || opt.rawMjpg || !opt.size.empty()) printMode("after request", cap);
 
         // Order matters on most UVC drivers: leave auto mode before setting a manual value.
         if (opt.autoExposure) cap.set(cv::CAP_PROP_AUTO_EXPOSURE, *opt.autoExposure);
@@ -193,6 +339,11 @@ int main(int argc, char** argv) {
         for (int attempt = 0; attempt < 10 && frame.empty(); ++attempt) cap.read(frame);
         if (frame.empty()) {
             std::cout << "  no frame delivered\n";
+            continue;
+        }
+        if (opt.rawMjpg) {
+            reportRawMjpg(cap, frame, opt, index);
+            ++working;
             continue;
         }
 
