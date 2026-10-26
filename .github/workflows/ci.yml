@@ -170,7 +170,7 @@ jobs:
       # and a cold install is retried with growing pauses.
       - name: Cache OpenCV
         id: opencv-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: C:\tools\opencv\build
           key: opencv-4.13.0-windows-build
